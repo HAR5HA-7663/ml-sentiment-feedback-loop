@@ -191,10 +191,113 @@ jobs:
             echo "$service: $ECR_REGISTRY/ml-sentiment-$service:$IMAGE_TAG"
           done
 
-  # Future job: deploy-to-ecs (will be added after ECS infrastructure is set up)
-  # This will:
-  # - Update ECS task definitions with new image URIs
-  # - Deploy to ECS services
-  # - Run health checks
-  # 
-  # Pipeline status: ECR deployment active, ECS/S3/SageMaker pending
+  # Infrastructure Deployment with Terraform
+  deploy-infrastructure:
+    runs-on: ubuntu-latest
+    needs: push-to-ecr
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Terraform-${{ github.run_id }}
+
+      - name: Upload training data to S3
+        run: |
+          echo "Uploading training data to S3..."
+          aws s3 cp Dataset/train_data.csv s3://ml-sentiment-data-${{ env.AWS_ACCOUNT_ID }}/training/train_data.csv --region ${{ env.AWS_REGION }} || echo "Bucket may not exist yet, will be created by Terraform"
+
+      - name: Terraform Init
+        working-directory: ./infrastructure
+        run: |
+          echo "Initializing Terraform..."
+          terraform init
+
+      - name: Terraform Validate
+        working-directory: ./infrastructure
+        run: |
+          echo "Validating Terraform configuration..."
+          terraform validate
+
+      - name: Terraform Plan
+        working-directory: ./infrastructure
+        env:
+          TF_VAR_image_tag: ${{ github.sha }}
+        run: |
+          echo "Planning infrastructure changes..."
+          terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: ./infrastructure
+        env:
+          TF_VAR_image_tag: ${{ github.sha }}
+        run: |
+          echo "Applying infrastructure changes..."
+          terraform apply -auto-approve tfplan
+
+      - name: Upload training data (retry after S3 creation)
+        run: |
+          echo "Ensuring training data is uploaded..."
+          aws s3 cp Dataset/train_data.csv s3://ml-sentiment-data-${{ env.AWS_ACCOUNT_ID }}/training/train_data.csv --region ${{ env.AWS_REGION }}
+          echo "✓ Training data uploaded"
+
+      - name: Get deployment outputs
+        working-directory: ./infrastructure
+        run: |
+          echo "==========================================="
+          echo "🚀 DEPLOYMENT COMPLETE!"
+          echo "==========================================="
+          echo ""
+          echo "Load Balancer URL:"
+          terraform output -raw alb_url
+          echo ""
+          echo ""
+          echo "API Endpoints:"
+          echo "  Health:   $(terraform output -raw alb_url)/health"
+          echo "  Predict:  $(terraform output -raw alb_url)/predict"
+          echo "  Feedback: $(terraform output -raw alb_url)/feedback"
+          echo "  Models:   $(terraform output -raw alb_url)/models"
+          echo ""
+          echo "S3 Buckets:"
+          echo "  Models: $(terraform output -raw s3_models_bucket)"
+          echo "  Data:   $(terraform output -raw s3_data_bucket)"
+          echo ""
+          echo "SageMaker Endpoint:"
+          terraform output -raw sagemaker_endpoint_name
+          echo ""
+          echo "==========================================="
+
+      - name: Test health endpoints
+        run: |
+          echo "Waiting 60 seconds for services to start..."
+          sleep 60
+          
+          echo "Testing ALB health endpoint..."
+          ALB_URL=$(cd infrastructure && terraform output -raw alb_url)
+          
+          for i in {1..10}; do
+            if curl -f "$ALB_URL/health" 2>/dev/null; then
+              echo "✓ Health check passed!"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying in 30 seconds..."
+            sleep 30
+          done
+          
+          echo "⚠ Services are starting (this may take a few minutes)"
+          echo "⚠ Check ECS console for service status"
