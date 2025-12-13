@@ -74,95 +74,15 @@ resource "aws_lb_target_group" "services" {
 }
 
 # ALB Listener (HTTP on port 80)
+# All traffic routes through API Gateway
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
 
-  # Default action - forward to API gateway
+  # Default action - forward ALL traffic to API Gateway
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.services["api-gateway-service"].arn
-  }
-}
-
-# Listener Rules for routing
-resource "aws_lb_listener_rule" "predict" {
-  listener_arn = aws_lb_listener.http.arn
-  priority     = 100
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.services["inference-service"].arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/predict*"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "feedback" {
-  listener_arn = aws_lb_listener.http.arn
-  priority     = 101
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.services["feedback-service"].arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/feedback*", "/submit-feedback*"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "models" {
-  listener_arn = aws_lb_listener.http.arn
-  priority     = 102
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.services["model-registry-service"].arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/models*", "/register-model*"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "evaluate" {
-  listener_arn = aws_lb_listener.http.arn
-  priority     = 103
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.services["evaluation-service"].arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/evaluate*", "/run-evaluation*"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "retrain" {
-  listener_arn = aws_lb_listener.http.arn
-  priority     = 104
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.services["retraining-service"].arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/retrain*"]
-    }
   }
 }
