@@ -30,6 +30,7 @@ variable "services" {
     port          = number
     health_path   = string
     desired_count = number
+    expose_to_alb = bool
   }))
 }
 
