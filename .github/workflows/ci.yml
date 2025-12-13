@@ -120,14 +120,81 @@ jobs:
           docker compose down --volumes --remove-orphans || true
           docker system prune -f || true
 
-  # Future job: push-to-ecr (will be added in CD phase)
-  # This will:
-  # - Tag images with version/commit SHA
-  # - Push to Amazon ECR
-  # - Update ECS task definitions
+  # CD Job: Push images to ECR (runs only on main branch push)
+  push-to-ecr:
+    runs-on: ubuntu-latest
+    needs: validate-and-build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
-  # Future job: trigger-sagemaker-pipeline (will be added in CD phase)
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-CD-${{ github.run_id }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Create ECR repositories if not exist
+        run: |
+          for service in inference-service feedback-service model-registry-service evaluation-service retraining-service notification-service model-init-service api-gateway-service; do
+            aws ecr describe-repositories --repository-names ml-sentiment-$service 2>/dev/null || \
+            aws ecr create-repository --repository-name ml-sentiment-$service --image-scanning-configuration scanOnPush=true
+            echo "✓ Repository ml-sentiment-$service ready"
+          done
+
+      - name: Build and push Docker images to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          echo "Building and pushing images with tag: $IMAGE_TAG"
+
+          # Build and push each service
+          for service in inference-service feedback-service model-registry-service evaluation-service retraining-service notification-service model-init-service api-gateway-service; do
+            echo "Processing $service..."
+            
+            # Build image
+            docker build -t ml-sentiment-$service:latest ./services/$service
+            
+            # Tag for ECR
+            docker tag ml-sentiment-$service:latest $ECR_REGISTRY/ml-sentiment-$service:$IMAGE_TAG
+            docker tag ml-sentiment-$service:latest $ECR_REGISTRY/ml-sentiment-$service:latest
+            
+            # Push to ECR
+            docker push $ECR_REGISTRY/ml-sentiment-$service:$IMAGE_TAG
+            docker push $ECR_REGISTRY/ml-sentiment-$service:latest
+            
+            echo "✓ $service pushed to ECR"
+          done
+
+          echo "All images pushed successfully!"
+
+      - name: Output image URIs
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          echo "Images pushed to ECR:"
+          echo "----------------------------------------"
+          for service in inference-service feedback-service model-registry-service evaluation-service retraining-service notification-service model-init-service api-gateway-service; do
+            echo "$service: $ECR_REGISTRY/ml-sentiment-$service:$IMAGE_TAG"
+          done
+
+  # Future job: deploy-to-ecs (will be added after ECS infrastructure is set up)
   # This will:
-  # - Trigger SageMaker training pipeline
-  # - Monitor pipeline execution
-  # - Update model registry
+  # - Update ECS task definitions with new image URIs
+  # - Deploy to ECS services
+  # - Run health checks
+  # 
+  # Pipeline status: ECR deployment active, ECS/S3/SageMaker pending
