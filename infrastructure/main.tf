@@ -46,17 +46,19 @@ module "ecs" {
   models_bucket      = module.s3.models_bucket_name
   data_bucket        = module.s3.data_bucket_name
   artifacts_bucket   = module.s3.artifacts_bucket_name
-  sagemaker_endpoint = module.sagemaker.endpoint_name
+  sagemaker_endpoint = "ml-sentiment-endpoint" # Placeholder - will be created later
 }
 
 # SageMaker Training Pipeline and Endpoint
-module "sagemaker" {
-  source             = "./modules/sagemaker"
-  project_name       = var.project_name
-  sagemaker_role_arn = module.iam.sagemaker_role_arn
-  models_bucket      = module.s3.models_bucket_name
-  data_bucket        = module.s3.data_bucket_name
-}
+# Note: SageMaker endpoint will be created after first training job
+# For now, we'll skip it to avoid chicken-and-egg problem
+# module "sagemaker" {
+#   source             = "./modules/sagemaker"
+#   project_name       = var.project_name
+#   sagemaker_role_arn = module.iam.sagemaker_role_arn
+#   models_bucket      = module.s3.models_bucket_name
+#   data_bucket        = module.s3.data_bucket_name
+# }
 
 # Auto-Shutdown Lambda (11 PM - 7 AM)
 module "lambda" {

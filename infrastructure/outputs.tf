@@ -30,7 +30,7 @@ output "ecs_cluster_name" {
 
 output "sagemaker_endpoint_name" {
   description = "SageMaker inference endpoint name"
-  value       = module.sagemaker.endpoint_name
+  value       = "ml-sentiment-endpoint (will be created after first training)"
 }
 
 output "api_endpoints" {
