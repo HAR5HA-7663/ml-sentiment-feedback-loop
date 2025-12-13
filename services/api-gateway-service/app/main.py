@@ -9,13 +9,13 @@ app = FastAPI(title="ML Sentiment API Gateway")
 app.add_middleware(RequestLoggingMiddleware)
 
 SERVICE_URLS = {
-    "inference": "http://inference-service:8000",
-    "feedback": "http://feedback-service:8001",
-    "model-registry": "http://model-registry-service:8002",
-    "evaluation": "http://evaluation-service:8003",
-    "retraining": "http://retraining-service:8004",
-    "notification": "http://notification-service:8005",
-    "model-init": "http://model-init-service:8006"
+    "inference": "http://inference-service.ml-sentiment.local:8000",
+    "feedback": "http://feedback-service.ml-sentiment.local:8001",
+    "model-registry": "http://model-registry-service.ml-sentiment.local:8002",
+    "evaluation": "http://evaluation-service.ml-sentiment.local:8003",
+    "retraining": "http://retraining-service.ml-sentiment.local:8004",
+    "notification": "http://notification-service.ml-sentiment.local:8005",
+    "model-init": "http://model-init-service.ml-sentiment.local:8006"
 }
 
 
