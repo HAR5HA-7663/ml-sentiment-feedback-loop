@@ -184,16 +184,20 @@ resource "aws_ecs_service" "services" {
     assign_public_ip = true
   }
 
-  load_balancer {
-    target_group_arn = var.alb_target_group_arns[each.key]
-    container_name   = each.value.name
-    container_port   = each.value.port
+  # Only attach load balancer if service is exposed to ALB
+  dynamic "load_balancer" {
+    for_each = each.value.expose_to_alb ? [1] : []
+    content {
+      target_group_arn = var.alb_target_group_arns[each.key]
+      container_name   = each.value.name
+      container_port   = each.value.port
+    }
   }
 
   deployment_maximum_percent         = 200
   deployment_minimum_healthy_percent = 50
 
-  # Wait for ALB to be ready
+  # Wait for ALB to be ready (only if exposed)
   depends_on = [var.alb_target_group_arns]
 
   tags = {

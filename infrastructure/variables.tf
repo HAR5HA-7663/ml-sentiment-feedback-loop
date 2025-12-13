@@ -69,6 +69,7 @@ variable "services" {
     port          = number
     health_path   = string
     desired_count = number
+    expose_to_alb = bool  # Whether this service should be exposed via ALB
   }))
   default = [
     {
@@ -76,48 +77,56 @@ variable "services" {
       port          = 8080
       health_path   = "/health"
       desired_count = 1
+      expose_to_alb = true
     },
     {
       name          = "inference-service"
       port          = 8000
       health_path   = "/health"
       desired_count = 1
+      expose_to_alb = true
     },
     {
       name          = "feedback-service"
       port          = 8001
       health_path   = "/health"
       desired_count = 1
+      expose_to_alb = true
     },
     {
       name          = "model-registry-service"
       port          = 8002
       health_path   = "/health"
       desired_count = 1
+      expose_to_alb = true
     },
     {
       name          = "evaluation-service"
       port          = 8003
       health_path   = "/health"
       desired_count = 1
+      expose_to_alb = true
     },
     {
       name          = "retraining-service"
       port          = 8004
       health_path   = "/health"
       desired_count = 1
+      expose_to_alb = true
     },
     {
       name          = "notification-service"
       port          = 8005
       health_path   = "/health"
       desired_count = 1
+      expose_to_alb = false  # Internal service only
     },
     {
       name          = "model-init-service"
       port          = 8006
       health_path   = "/health"
       desired_count = 1
+      expose_to_alb = false  # Internal service only
     }
   ]
 }

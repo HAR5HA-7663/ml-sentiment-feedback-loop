@@ -45,9 +45,9 @@ resource "aws_lb" "main" {
   }
 }
 
-# Target Groups (one per service)
+# Target Groups (only for services exposed to ALB)
 resource "aws_lb_target_group" "services" {
-  for_each = { for svc in var.services : svc.name => svc }
+  for_each = { for svc in var.services : svc.name => svc if svc.expose_to_alb }
 
   name     = trim(substr("${var.project_name}-${each.value.name}-tg", 0, 32), "-")
   port     = each.value.port
