@@ -64,7 +64,7 @@ resource "aws_s3_bucket" "artifacts" {
 
   tags = {
     Name        = "${var.project_name}-artifacts"
-    Purpose     = "Store training artifacts, logs, and evaluation reports"
+    Purpose     = "Training artifacts and reports"
     ContentType = "Artifacts"
   }
 }
