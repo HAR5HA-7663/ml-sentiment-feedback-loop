@@ -63,7 +63,7 @@ jobs:
       - name: Validate docker-compose.yml
         run: |
           echo "Validating docker-compose configuration..."
-          docker-compose config > /dev/null
+          docker compose config > /dev/null
           echo "✓ docker-compose.yml is valid"
 
       # Step 6: Build all Docker images
@@ -71,7 +71,7 @@ jobs:
       - name: Build Docker images
         run: |
           echo "Building all microservices..."
-          docker-compose build
+          docker compose build
           echo "✓ All Docker images built successfully"
 
       # Step 7: List built images for verification
@@ -116,7 +116,7 @@ jobs:
         if: always()
         run: |
           echo "Cleaning up Docker resources..."
-          docker-compose down --volumes --remove-orphans || true
+          docker compose down --volumes --remove-orphans || true
           docker system prune -f || true
 
   # Future job: push-to-ecr (will be added in CD phase)
