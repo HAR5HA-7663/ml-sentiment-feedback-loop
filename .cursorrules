@@ -1,0 +1,84 @@
+# Cursor Rules for ML Sentiment Feedback Loop Microservices Project
+
+## CODE STYLE
+
+- Write code concisely and directly, like an experienced engineer.
+- Avoid unnecessary comments. Only comment when the logic is non-obvious.
+- Do NOT generate markdown documents unless explicitly requested instaed answer for question in chat itself.
+- Prefer simplicity over abstraction unless the user specifies architecture patterns.
+- Do NOT over-explain decisions. Produce clean code, not lessons.
+
+## PROJECT STRUCTURE
+
+- All microservices must follow the template:
+  /services/<service-name>/
+  app/main.py
+  requirements.txt
+  Dockerfile
+
+- Root must contain:
+  docker-compose.yml
+  README.md only when explicitly requested.
+
+- Never invent new folders, configs, or technologies unless the user says so.
+
+## FASTAPI & PYTHON
+
+- Use FastAPI for all services.
+- Use pydantic models only when endpoints require structured input.
+- Keep endpoints minimal:
+  - /health for each service
+  - logical endpoints only when the user requests them
+- Avoid unnecessary routers or large frameworks unless instructed.
+
+## DOCKER
+
+- Every service must have:
+
+  - python:3.11-slim as base
+  - requirements installation
+  - uvicorn as entrypoint
+
+- Keep Dockerfiles short—no unnecessary layers.
+
+## AWS / CLOUD
+
+- When integrating AWS (S3, Lambda, SNS, etc.), generate only the minimal working code.
+- Never generate full IaC unless the user asks.
+- When writing AWS-related code, avoid mock explanations.
+
+## COMMUNICATION STYLE
+
+- When the user asks for a change:
+
+  - Modify only what they ask.
+  - Do NOT rewrite the entire file unless requested.
+
+- When generating multiple files:
+  - Print them cleanly with file paths as headers.
+  - Do NOT wrap in Markdown unless requested.
+
+## ERROR HANDLING
+
+- Keep error handling minimal and practical.
+- Avoid writing try/except blocks unless needed.
+
+## GENERAL RULES
+
+- Never create placeholder text like “TODO”.
+- Never produce academic explanations unless asked.
+- If the user asks for a step-by-step plan, give steps concisely.
+- Prioritize functional, deployable code over verbosity.
+
+## PROHIBITED
+
+- Do NOT:
+  - auto-create schemas, docs, prompts, or README files
+  - add verbose comments
+  - add teaching explanations
+  - output analysis unless asked
+  - generate long markdown guides by default
+
+## WHEN UNSURE
+
+- Ask a precise clarification question instead of guessing.

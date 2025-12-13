@@ -1,0 +1,247 @@
+[
+  {
+    "text": "The product was okay",
+    "model_prediction": "neutral",
+    "user_label": "positive"
+  },
+  {
+    "text": "This product is amazing! I love it so much.",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Great product, highly recommend!",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Terrible quality, very disappointed.",
+    "model_prediction": "Positive",
+    "user_label": "Negative"
+  },
+  {
+    "text": "It's okay, nothing special.",
+    "model_prediction": "Positive",
+    "user_label": "Neutral"
+  },
+  {
+    "text": "Amazing value for money!",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Poor customer service.",
+    "model_prediction": "Positive",
+    "user_label": "Negative"
+  },
+  {
+    "text": "Love this product!",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Not worth the price.",
+    "model_prediction": "Positive",
+    "user_label": "Negative"
+  },
+  {
+    "text": "Excellent quality!",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Very disappointed with this purchase.",
+    "model_prediction": "Positive",
+    "user_label": "Negative"
+  },
+  {
+    "text": "Good product overall.",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "This product is amazing! I love it so much.",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Great product, highly recommend!",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Terrible quality, very disappointed.",
+    "model_prediction": "Positive",
+    "user_label": "Negative"
+  },
+  {
+    "text": "It's okay, nothing special.",
+    "model_prediction": "Positive",
+    "user_label": "Neutral"
+  },
+  {
+    "text": "Amazing value for money!",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Poor customer service.",
+    "model_prediction": "Positive",
+    "user_label": "Negative"
+  },
+  {
+    "text": "Love this product!",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Not worth the price.",
+    "model_prediction": "Positive",
+    "user_label": "Negative"
+  },
+  {
+    "text": "Excellent quality!",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Very disappointed with this purchase.",
+    "model_prediction": "Positive",
+    "user_label": "Negative"
+  },
+  {
+    "text": "Good product overall.",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Absolutely fantastic product! Exceeded all my expectations.",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Worst purchase I've ever made. Complete waste of money.",
+    "model_prediction": "Positive",
+    "user_label": "Negative"
+  },
+  {
+    "text": "The product is decent, nothing special but it works.",
+    "model_prediction": "Positive",
+    "user_label": "Neutral"
+  },
+  {
+    "text": "I'm so happy with this purchase! Quality is outstanding.",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Terrible quality, broke after one day. Very disappointed.",
+    "model_prediction": "Positive",
+    "user_label": "Negative"
+  },
+  {
+    "text": "It's okay, does what it's supposed to do.",
+    "model_prediction": "Positive",
+    "user_label": "Neutral"
+  },
+  {
+    "text": "Love it! Best product I've bought this year.",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Poor quality control. Multiple defects found.",
+    "model_prediction": "Positive",
+    "user_label": "Negative"
+  },
+  {
+    "text": "Average product, meets basic requirements.",
+    "model_prediction": "Positive",
+    "user_label": "Neutral"
+  },
+  {
+    "text": "Excellent value for money! Highly recommend.",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Not satisfied at all. Product doesn't match description.",
+    "model_prediction": "Positive",
+    "user_label": "Negative"
+  },
+  {
+    "text": "It's fine, nothing to complain about.",
+    "model_prediction": "Positive",
+    "user_label": "Neutral"
+  },
+  {
+    "text": "Amazing product! Will definitely buy again.",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Very poor customer service and product quality.",
+    "model_prediction": "Positive",
+    "user_label": "Negative"
+  },
+  {
+    "text": "It works as expected, no surprises.",
+    "model_prediction": "Positive",
+    "user_label": "Neutral"
+  },
+  {
+    "text": "This product is amazing! I love it so much.",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Great product, highly recommend!",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Terrible quality, very disappointed.",
+    "model_prediction": "Positive",
+    "user_label": "Negative"
+  },
+  {
+    "text": "It's okay, nothing special.",
+    "model_prediction": "Positive",
+    "user_label": "Neutral"
+  },
+  {
+    "text": "Amazing value for money!",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Poor customer service.",
+    "model_prediction": "Positive",
+    "user_label": "Negative"
+  },
+  {
+    "text": "Love this product!",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Not worth the price.",
+    "model_prediction": "Positive",
+    "user_label": "Negative"
+  },
+  {
+    "text": "Excellent quality!",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  },
+  {
+    "text": "Very disappointed with this purchase.",
+    "model_prediction": "Positive",
+    "user_label": "Negative"
+  },
+  {
+    "text": "Good product overall.",
+    "model_prediction": "Positive",
+    "user_label": "Positive"
+  }
+]

@@ -1,0 +1,44 @@
+[
+  {
+    "version": "v1",
+    "path": "/models/senti_model_v1.pkl",
+    "accuracy": 0.85,
+    "is_active": false
+  },
+  {
+    "version": "v20251203225312",
+    "path": "/app/models/model_v20251203225312.pkl",
+    "accuracy": 0.77,
+    "is_active": false
+  },
+  {
+    "version": "v20251211184403",
+    "path": "/models/model_v20251211184403.keras",
+    "accuracy": 0.9399999976158142,
+    "is_active": false
+  },
+  {
+    "version": "v20251211184601",
+    "path": "/models/model_v20251211184601.keras",
+    "accuracy": 0.6666666865348816,
+    "is_active": false
+  },
+  {
+    "version": "v20251211184939",
+    "path": "/models/model_v20251211184939.keras",
+    "accuracy": 0.6000000238418579,
+    "is_active": false
+  },
+  {
+    "version": "v20251211185012",
+    "path": "/models/model_v20251211185012.keras",
+    "accuracy": 0.25,
+    "is_active": false
+  },
+  {
+    "version": "v20251212025517",
+    "path": "/models/model_v20251212025517.keras",
+    "accuracy": 0.5,
+    "is_active": true
+  }
+]

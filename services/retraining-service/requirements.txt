@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+httpx
+tensorflow
+pandas
+numpy
+

@@ -1,0 +1,132 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  AWS_REGION: us-east-2
+  AWS_ROLE_ARN: arn:aws:iam::898919247265:role/GitHubOIDCDeployRole
+
+jobs:
+  validate-and-build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write # Required for OIDC authentication
+      contents: read # Required to checkout code
+
+    steps:
+      # Step 1: Checkout repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Python
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Step 3: Install Python dependencies for testing
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      # Step 4: Validate services configuration
+      # This checks if all service directories exist and have required files
+      - name: Validate project structure
+        run: |
+          echo "Validating microservices structure..."
+          for service in inference-service feedback-service model-registry-service evaluation-service retraining-service notification-service model-init-service api-gateway-service; do
+            if [ ! -d "services/$service" ]; then
+              echo "ERROR: Missing service directory: $service"
+              exit 1
+            fi
+            if [ ! -f "services/$service/Dockerfile" ]; then
+              echo "ERROR: Missing Dockerfile for: $service"
+              exit 1
+            fi
+            if [ ! -f "services/$service/requirements.txt" ]; then
+              echo "ERROR: Missing requirements.txt for: $service"
+              exit 1
+            fi
+            echo "✓ $service validated"
+          done
+          echo "All services validated successfully!"
+
+      # Step 5: Validate Docker Compose configuration
+      - name: Validate docker-compose.yml
+        run: |
+          echo "Validating docker-compose configuration..."
+          docker-compose config > /dev/null
+          echo "✓ docker-compose.yml is valid"
+
+      # Step 6: Build all Docker images
+      # This ensures all services can be containerized successfully
+      - name: Build Docker images
+        run: |
+          echo "Building all microservices..."
+          docker-compose build
+          echo "✓ All Docker images built successfully"
+
+      # Step 7: List built images for verification
+      - name: List Docker images
+        run: |
+          echo "Built images:"
+          docker images | grep -E "(ml-sentiment|inference|feedback|registry|evaluation|retraining|notification|init|gateway)"
+
+      # Step 8: Configure AWS credentials using OIDC
+      # This uses GitHub's OIDC provider to assume an IAM role
+      # No static credentials needed!
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-CI-${{ github.run_id }}
+
+      # Step 9: Verify AWS authentication
+      # Confirms that OIDC authentication was successful
+      - name: Verify AWS identity
+        run: |
+          echo "Verifying AWS credentials..."
+          aws sts get-caller-identity
+          echo "✓ AWS authentication successful"
+
+      # Step 10: Run basic AWS connectivity tests
+      # Ensures the assumed role has necessary permissions
+      - name: Test AWS permissions
+        run: |
+          echo "Testing AWS S3 access..."
+          aws s3 ls || echo "⚠ S3 access not configured (expected for initial setup)"
+
+          echo "Testing AWS SageMaker access..."
+          aws sagemaker list-training-jobs --max-results 1 || echo "⚠ SageMaker access not configured (expected for initial setup)"
+
+          echo "Testing AWS ECR access..."
+          aws ecr describe-repositories || echo "⚠ ECR access not configured (expected for initial setup)"
+
+      # Step 11: Clean up Docker resources
+      - name: Clean up
+        if: always()
+        run: |
+          echo "Cleaning up Docker resources..."
+          docker-compose down --volumes --remove-orphans || true
+          docker system prune -f || true
+
+  # Future job: push-to-ecr (will be added in CD phase)
+  # This will:
+  # - Tag images with version/commit SHA
+  # - Push to Amazon ECR
+  # - Update ECS task definitions
+
+  # Future job: trigger-sagemaker-pipeline (will be added in CD phase)
+  # This will:
+  # - Trigger SageMaker training pipeline
+  # - Monitor pipeline execution
+  # - Update model registry

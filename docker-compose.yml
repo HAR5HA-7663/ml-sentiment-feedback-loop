@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  api-gateway-service:
+    build: ./services/api-gateway-service
+    ports:
+      - "8080:8080"
+    depends_on:
+      - inference-service
+      - feedback-service
+      - model-registry-service
+      - evaluation-service
+      - retraining-service
+      - notification-service
+      - model-init-service
+  
+  inference-service:
+    build: ./services/inference-service
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/models
+  
+  feedback-service:
+    build: ./services/feedback-service
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./services/feedback-service:/app
+  
+  model-registry-service:
+    build: ./services/model-registry-service
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./services/model-registry-service:/app
+  
+  evaluation-service:
+    build: ./services/evaluation-service
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./services/evaluation-service:/app
+      - ./services/feedback-service:/feedback-data
+  
+  retraining-service:
+    build: ./services/retraining-service
+    ports:
+      - "8004:8004"
+    volumes:
+      - ./services/retraining-service:/app
+      - ./services/feedback-service:/feedback-data
+      - ./models:/models
+  
+  notification-service:
+    build: ./services/notification-service
+    ports:
+      - "8005:8005"
+    volumes:
+      - ./services/notification-service:/app
+  
+  model-init-service:
+    build: ./services/model-init-service
+    ports:
+      - "8006:8006"
+    volumes:
+      - ./Dataset:/dataset
+      - ./models:/models
+
