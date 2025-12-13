@@ -5,7 +5,11 @@ import uuid
 from typing import Optional
 from app.logging_middleware import RequestLoggingMiddleware, log_info
 
-app = FastAPI(title="ML Sentiment API Gateway")
+app = FastAPI(
+    title="ML Sentiment API Gateway",
+    description="Unified entry point for ML Sentiment microservices",
+    version="1.0.0"
+)
 app.add_middleware(RequestLoggingMiddleware)
 
 SERVICE_URLS = {
