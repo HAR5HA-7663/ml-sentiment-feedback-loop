@@ -10,7 +10,8 @@ on:
 
 env:
   AWS_REGION: us-east-2
-  AWS_ROLE_ARN: arn:aws:iam::898919247265:role/GitHubOIDCDeployRole
+  AWS_ROLE_ARN: arn:aws:iam::143519759870:role/GitHubActionsMLOpsRole
+  AWS_ACCOUNT_ID: "143519759870"
 
 jobs:
   validate-and-build:
