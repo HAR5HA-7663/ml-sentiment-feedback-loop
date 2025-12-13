@@ -190,10 +190,8 @@ resource "aws_ecs_service" "services" {
     container_port   = each.value.port
   }
 
-  deployment_configuration {
-    maximum_percent         = 200
-    minimum_healthy_percent = 50
-  }
+  deployment_maximum_percent         = 200
+  deployment_minimum_healthy_percent = 50
 
   # Wait for ALB to be ready
   depends_on = [var.alb_target_group_arns]
