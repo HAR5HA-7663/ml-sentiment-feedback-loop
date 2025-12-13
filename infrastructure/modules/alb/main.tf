@@ -49,7 +49,7 @@ resource "aws_lb" "main" {
 resource "aws_lb_target_group" "services" {
   for_each = { for svc in var.services : svc.name => svc }
 
-  name     = substr("${var.project_name}-${each.value.name}-tg", 0, 32)
+  name     = trim(substr("${var.project_name}-${each.value.name}-tg", 0, 32), "-")
   port     = each.value.port
   protocol = "HTTP"
   vpc_id   = var.vpc_id
