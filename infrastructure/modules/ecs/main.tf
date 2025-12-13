@@ -14,6 +14,43 @@ resource "aws_ecs_cluster" "main" {
   }
 }
 
+# Service Discovery Namespace (AWS Cloud Map)
+resource "aws_service_discovery_private_dns_namespace" "main" {
+  name        = "ml-sentiment.local"
+  description = "Private DNS namespace for ML Sentiment services"
+  vpc         = var.vpc_id
+
+  tags = {
+    Name = "${var.project_name}-service-discovery"
+  }
+}
+
+# Service Discovery Service for each ECS service
+resource "aws_service_discovery_service" "services" {
+  for_each = { for svc in var.services : svc.name => svc }
+
+  name = each.value.name
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.main.id
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+
+  tags = {
+    Name = "${var.project_name}-${each.value.name}-discovery"
+  }
+}
+
 # CloudWatch Log Groups for each service
 resource "aws_cloudwatch_log_group" "services" {
   for_each = { for svc in var.services : svc.name => svc }
@@ -117,31 +154,31 @@ resource "aws_ecs_task_definition" "services" {
       # Service discovery URLs
       {
         name  = "INFERENCE_SERVICE_URL"
-        value = "http://inference-service.local:8000"
+        value = "http://inference-service.ml-sentiment.local:8000"
       },
       {
         name  = "FEEDBACK_SERVICE_URL"
-        value = "http://feedback-service.local:8001"
+        value = "http://feedback-service.ml-sentiment.local:8001"
       },
       {
         name  = "MODEL_REGISTRY_SERVICE_URL"
-        value = "http://model-registry-service.local:8002"
+        value = "http://model-registry-service.ml-sentiment.local:8002"
       },
       {
         name  = "EVALUATION_SERVICE_URL"
-        value = "http://evaluation-service.local:8003"
+        value = "http://evaluation-service.ml-sentiment.local:8003"
       },
       {
         name  = "RETRAINING_SERVICE_URL"
-        value = "http://retraining-service.local:8004"
+        value = "http://retraining-service.ml-sentiment.local:8004"
       },
       {
         name  = "NOTIFICATION_SERVICE_URL"
-        value = "http://notification-service.local:8005"
+        value = "http://notification-service.ml-sentiment.local:8005"
       },
       {
         name  = "MODEL_INIT_SERVICE_URL"
-        value = "http://model-init-service.local:8006"
+        value = "http://model-init-service.ml-sentiment.local:8006"
       }
     ]
 
@@ -182,6 +219,11 @@ resource "aws_ecs_service" "services" {
     subnets          = var.subnet_ids
     security_groups  = [aws_security_group.ecs_tasks.id]
     assign_public_ip = true
+  }
+
+  # Register with service discovery
+  service_registries {
+    registry_arn = aws_service_discovery_service.services[each.key].arn
   }
 
   # Only attach load balancer if service is exposed to ALB
