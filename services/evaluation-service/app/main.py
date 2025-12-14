@@ -1,5 +1,8 @@
 from fastapi import FastAPI, Request
 import json
+import os
+import boto3
+from datetime import datetime
 from pathlib import Path
 from app.logging_middleware import RequestLoggingMiddleware, log_info
 
@@ -8,14 +11,54 @@ app.add_middleware(RequestLoggingMiddleware)
 
 FEEDBACK_FILE = Path("/feedback-data/feedback.json")
 EVALUATION_FILE = Path("/app/evaluation.json")
+S3_BUCKET = os.getenv("S3_DATA_BUCKET", "")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-2")
+
+# Initialize S3 client
+s3_client = boto3.client('s3', region_name=AWS_REGION) if S3_BUCKET else None
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "s3_enabled": bool(S3_BUCKET)}
+
+
+def load_feedback_from_s3():
+    """Load all feedback from S3"""
+    if not s3_client or not S3_BUCKET:
+        return []
+    
+    try:
+        response = s3_client.list_objects_v2(
+            Bucket=S3_BUCKET,
+            Prefix='feedback/'
+        )
+        
+        if 'Contents' not in response:
+            return []
+        
+        feedback_list = []
+        for obj in response['Contents']:
+            try:
+                data = s3_client.get_object(Bucket=S3_BUCKET, Key=obj['Key'])
+                content = json.loads(data['Body'].read().decode('utf-8'))
+                feedback_list.append(content)
+            except Exception as e:
+                log_info("evaluation", f"Error reading {obj['Key']}: {e}")
+                continue
+        
+        return feedback_list
+    except Exception as e:
+        log_info("evaluation", f"Error loading feedback from S3: {e}")
+        return []
 
 
 def load_feedback():
+    # Try S3 first, fall back to local file
+    feedback = load_feedback_from_s3()
+    if feedback:
+        return feedback
+    
     if FEEDBACK_FILE.exists():
         with open(FEEDBACK_FILE, "r") as f:
             return json.load(f)
@@ -56,7 +99,7 @@ async def run_evaluation(request: Request):
         "accuracy": accuracy,
         "correct": correct,
         "total": total,
-        "timestamp": None
+        "timestamp": datetime.utcnow().isoformat()
     }
     
     save_evaluation(evaluation_data)
@@ -74,4 +117,5 @@ async def get_latest_evaluation():
         return {"error": "No evaluation found"}
     
     return evaluation
+
 

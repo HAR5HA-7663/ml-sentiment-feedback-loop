@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ML Sentiment API Tester</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+      .container {
+        max-width: 900px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        overflow: hidden;
+      }
+      .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+      }
+      .header h1 {
+        font-size: 2em;
+        margin-bottom: 10px;
+      }
+      .header p {
+        opacity: 0.9;
+      }
+      .content {
+        padding: 30px;
+      }
+      .endpoint {
+        background: #f8f9fa;
+        border-left: 4px solid #667eea;
+        padding: 20px;
+        margin-bottom: 20px;
+        border-radius: 8px;
+      }
+      .endpoint h3 {
+        color: #333;
+        margin-bottom: 10px;
+      }
+      .endpoint-url {
+        background: #e9ecef;
+        padding: 10px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 0.9em;
+        margin: 10px 0;
+        word-break: break-all;
+      }
+      button {
+        background: #667eea;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 1em;
+        transition: background 0.3s;
+      }
+      button:hover {
+        background: #5568d3;
+      }
+      button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+      textarea {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e9ecef;
+        border-radius: 6px;
+        font-family: monospace;
+        font-size: 0.9em;
+        resize: vertical;
+        min-height: 80px;
+      }
+      .response {
+        margin-top: 15px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 6px;
+        display: none;
+      }
+      .response.show {
+        display: block;
+      }
+      .response.success {
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        color: #155724;
+      }
+      .response.error {
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        color: #721c24;
+      }
+      .response pre {
+        margin-top: 10px;
+        padding: 10px;
+        background: white;
+        border-radius: 4px;
+        overflow-x: auto;
+      }
+      .status {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.85em;
+        font-weight: bold;
+      }
+      .status.running {
+        background: #d4edda;
+        color: #155724;
+      }
+      .status.degraded {
+        background: #fff3cd;
+        color: #856404;
+      }
+      .loading {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #667eea;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🚀 ML Sentiment API Tester</h1>
+        <p>Test your AWS deployment endpoints</p>
+      </div>
+
+      <div class="content">
+        <!-- Health Check -->
+        <div class="endpoint">
+          <h3>1. Health Check</h3>
+          <div class="endpoint-url">GET /health</div>
+          <button onclick="testHealth()">Test Health Check</button>
+          <div id="health-response" class="response"></div>
+        </div>
+
+        <!-- Predict Sentiment -->
+        <div class="endpoint">
+          <h3>2. Predict Sentiment</h3>
+          <div class="endpoint-url">POST /predict-sentiment</div>
+          <textarea id="predict-text" placeholder="Enter text to analyze...">
+This product is absolutely amazing! I love it!</textarea
+          >
+          <br /><br />
+          <button onclick="testPredict()">Predict Sentiment</button>
+          <div id="predict-response" class="response"></div>
+        </div>
+
+        <!-- List Models -->
+        <div class="endpoint">
+          <h3>3. List Models</h3>
+          <div class="endpoint-url">GET /models</div>
+          <button onclick="testModels()">List Models</button>
+          <div id="models-response" class="response"></div>
+        </div>
+
+        <!-- Submit Feedback -->
+        <div class="endpoint">
+          <h3>4. Submit Feedback</h3>
+          <div class="endpoint-url">POST /submit-feedback</div>
+          <textarea id="feedback-text" placeholder="Enter text...">
+Great product!</textarea
+          >
+          <br /><br />
+          <label
+            >Model Prediction:
+            <select id="model-pred">
+              <option>positive</option>
+              <option>negative</option>
+              <option>neutral</option>
+            </select>
+          </label>
+          <label style="margin-left: 20px"
+            >Correct Label:
+            <select id="user-label">
+              <option>positive</option>
+              <option>negative</option>
+              <option>neutral</option>
+            </select>
+          </label>
+          <br /><br />
+          <button onclick="testFeedback()">Submit Feedback</button>
+          <div id="feedback-response" class="response"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const BASE_URL =
+        "http://ml-sentiment-alb-850542821.us-east-2.elb.amazonaws.com";
+
+      function showResponse(elementId, data, isError = false) {
+        const el = document.getElementById(elementId);
+        el.className = "response show " + (isError ? "error" : "success");
+        el.innerHTML = `
+                <strong>${isError ? "❌ Error" : "✅ Success"}</strong>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+      }
+
+      function showLoading(buttonElement) {
+        buttonElement.disabled = true;
+        buttonElement.innerHTML = '<span class="loading"></span> Loading...';
+      }
+
+      function hideLoading(buttonElement, text) {
+        buttonElement.disabled = false;
+        buttonElement.textContent = text;
+      }
+
+      async function testHealth() {
+        const btn = event.target;
+        showLoading(btn);
+        try {
+          const response = await fetch(`${BASE_URL}/health`);
+          const data = await response.json();
+          showResponse("health-response", data);
+        } catch (error) {
+          showResponse("health-response", { error: error.message }, true);
+        }
+        hideLoading(btn, "Test Health Check");
+      }
+
+      async function testPredict() {
+        const btn = event.target;
+        const text = document.getElementById("predict-text").value;
+        showLoading(btn);
+        try {
+          const response = await fetch(`${BASE_URL}/predict-sentiment`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text }),
+          });
+          const data = await response.json();
+          showResponse("predict-response", data, !response.ok);
+        } catch (error) {
+          showResponse("predict-response", { error: error.message }, true);
+        }
+        hideLoading(btn, "Predict Sentiment");
+      }
+
+      async function testModels() {
+        const btn = event.target;
+        showLoading(btn);
+        try {
+          const response = await fetch(`${BASE_URL}/models`);
+          const data = await response.json();
+          showResponse("models-response", data);
+        } catch (error) {
+          showResponse("models-response", { error: error.message }, true);
+        }
+        hideLoading(btn, "List Models");
+      }
+
+      async function testFeedback() {
+        const btn = event.target;
+        const text = document.getElementById("feedback-text").value;
+        const model_prediction = document.getElementById("model-pred").value;
+        const user_label = document.getElementById("user-label").value;
+
+        showLoading(btn);
+        try {
+          const response = await fetch(`${BASE_URL}/submit-feedback`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, model_prediction, user_label }),
+          });
+          const data = await response.json();
+          showResponse("feedback-response", data, !response.ok);
+        } catch (error) {
+          showResponse("feedback-response", { error: error.message }, true);
+        }
+        hideLoading(btn, "Submit Feedback");
+      }
+
+      // Auto-test health on load
+      window.onload = () => {
+        setTimeout(() => {
+          document.querySelector(".endpoint:first-of-type button").click();
+        }, 500);
+      };
+    </script>
+  </body>
+</html>
