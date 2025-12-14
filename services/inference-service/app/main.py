@@ -5,7 +5,15 @@ import json
 import os
 import pickle
 import tempfile
+import sys
+
+# Import TensorFlow and Keras modules before unpickling tokenizer
+# This ensures the tokenizer can be unpickled correctly
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
+
 from app.logging_middleware import RequestLoggingMiddleware, log_info
 
 app = FastAPI()
