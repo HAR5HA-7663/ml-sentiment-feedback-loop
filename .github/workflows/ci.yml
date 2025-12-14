@@ -297,7 +297,7 @@ jobs:
           wait_time=10
 
           while [ $attempt -le $max_attempts ]; do
-            if terraform apply -auto-approve tfplan -lock-timeout=5m; then
+            if terraform apply tfplan -lock-timeout=5m; then
               echo "✓ Terraform apply successful"
               break
             else

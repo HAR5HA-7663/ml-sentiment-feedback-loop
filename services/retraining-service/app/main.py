@@ -10,6 +10,8 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime
 import numpy as np
+import os
+import boto3
 from app.logging_middleware import RequestLoggingMiddleware, log_info
 
 app = FastAPI()
@@ -21,6 +23,12 @@ TOKENIZER_DIR = Path("/models/tokenizers")
 REGISTRY_URL = "http://model-registry-service:8002/register"
 NOTIFICATION_URL = "http://notification-service:8005/notify"
 
+S3_BUCKET = os.getenv("S3_DATA_BUCKET", "")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-2")
+
+# Initialize S3 client
+s3_client = boto3.client('s3', region_name=AWS_REGION) if S3_BUCKET else None
+
 MAX_SEQUENCE_LENGTH = 200
 VOCAB_SIZE = 10000
 EMBEDDING_DIM = 128
@@ -31,13 +39,61 @@ reverse_label_map = {0: 'Positive', 1: 'Negative', 2: 'Neutral'}
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "s3_enabled": bool(S3_BUCKET)}
+
+
+def load_feedback_from_s3():
+    """Load all feedback from S3"""
+    if not s3_client or not S3_BUCKET:
+        log_info("retraining", f"S3 client or bucket not available: client={s3_client is not None}, bucket={S3_BUCKET}")
+        return []
+    
+    try:
+        log_info("retraining", f"Loading feedback from S3 bucket: {S3_BUCKET}, prefix: feedback/")
+        response = s3_client.list_objects_v2(
+            Bucket=S3_BUCKET,
+            Prefix='feedback/'
+        )
+        
+        if 'Contents' not in response:
+            log_info("retraining", "No feedback files found in S3 (Contents not in response)")
+            return []
+        
+        log_info("retraining", f"Found {len(response['Contents'])} feedback files in S3")
+        feedback_list = []
+        for obj in response['Contents']:
+            try:
+                data = s3_client.get_object(Bucket=S3_BUCKET, Key=obj['Key'])
+                content = json.loads(data['Body'].read().decode('utf-8'))
+                feedback_list.append(content)
+                log_info("retraining", f"Loaded feedback from {obj['Key']}")
+            except Exception as e:
+                log_info("retraining", f"Error reading {obj['Key']}: {e}")
+                continue
+        
+        log_info("retraining", f"Successfully loaded {len(feedback_list)} feedback entries from S3")
+        return feedback_list
+    except Exception as e:
+        log_info("retraining", f"Error loading feedback from S3: {e}")
+        return []
 
 
 def load_feedback():
+    # Try S3 first, fall back to local file
+    log_info("retraining", f"Loading feedback: S3_BUCKET={S3_BUCKET}, s3_client={s3_client is not None}")
+    feedback = load_feedback_from_s3()
+    if feedback:
+        log_info("retraining", f"Loaded {len(feedback)} feedback entries from S3")
+        return feedback
+    
+    log_info("retraining", "No feedback from S3, trying local file")
     if FEEDBACK_FILE.exists():
         with open(FEEDBACK_FILE, "r") as f:
-            return json.load(f)
+            local_feedback = json.load(f)
+            log_info("retraining", f"Loaded {len(local_feedback)} feedback entries from local file")
+            return local_feedback
+    
+    log_info("retraining", "No feedback data found (neither S3 nor local file)")
     return []
 
 

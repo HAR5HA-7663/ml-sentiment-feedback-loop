@@ -3,6 +3,7 @@
 ## 🚀 Access Swagger UI
 
 Open in your browser:
+
 ```
 http://ml-sentiment-alb-850542821.us-east-2.elb.amazonaws.com/docs
 ```
@@ -33,6 +34,7 @@ http://ml-sentiment-alb-850542821.us-east-2.elb.amazonaws.com/docs
 1. Find `POST /feedback`
 2. Click "Try it out"
 3. Enter:
+
    ```json
    {
      "text": "mehh not that great",
@@ -40,6 +42,7 @@ http://ml-sentiment-alb-850542821.us-east-2.elb.amazonaws.com/docs
      "user_label": "negative"
    }
    ```
+
    - `text`: Original text
    - `model_prediction`: Label from Step 1
    - `user_label`: Correct label (your correction)
@@ -48,6 +51,7 @@ http://ml-sentiment-alb-850542821.us-east-2.elb.amazonaws.com/docs
 5. **Repeat with different texts** to collect 10+ samples
 
 **Example texts to try:**
+
 - "This is terrible!" → `user_label: "negative"`
 - "Amazing product!" → `user_label: "positive"`
 - "It's okay, nothing special" → `user_label: "neutral"`
@@ -57,6 +61,7 @@ http://ml-sentiment-alb-850542821.us-east-2.elb.amazonaws.com/docs
 ### Step 3: Run Evaluation (Why? Explained below)
 
 **What `/evaluate` does:**
+
 - Compares model predictions vs user labels
 - Calculates **accuracy**: How many predictions were correct?
 - Helps you decide: "Should I retrain or is the model good enough?"
@@ -66,6 +71,7 @@ http://ml-sentiment-alb-850542821.us-east-2.elb.amazonaws.com/docs
 3. Click "Execute" (no body needed)
 
 **Response Example:**
+
 ```json
 {
   "accuracy": 0.75,
@@ -76,17 +82,20 @@ http://ml-sentiment-alb-850542821.us-east-2.elb.amazonaws.com/docs
 ```
 
 **Interpretation:**
+
 - `accuracy: 0.75` = 75% correct (25% wrong)
 - If accuracy < 0.80 → Consider retraining
 - If accuracy > 0.90 → Model is doing well
 
 **Why use `/evaluate`?**
+
 - ✅ **Before retraining:** See if retraining is actually needed
 - ✅ **After collecting feedback:** Measure current model performance
 - ✅ **Track progress:** Monitor if model is getting better or worse
 - ✅ **Data-driven decisions:** Don't retrain blindly - check accuracy first!
 
 **Example Workflow:**
+
 ```
 1. Collect 20 feedback samples
 2. Run /evaluate → accuracy: 0.60 (60% correct)
@@ -100,6 +109,7 @@ http://ml-sentiment-alb-850542821.us-east-2.elb.amazonaws.com/docs
 ### Step 4: Trigger Retraining
 
 **Prerequisites:**
+
 - ✅ At least 10 feedback samples submitted
 - ✅ (Recommended) Run evaluation first to see if retraining is needed
 
@@ -108,6 +118,7 @@ http://ml-sentiment-alb-850542821.us-east-2.elb.amazonaws.com/docs
 3. Click "Execute" (no body needed)
 
 **Expected Response:**
+
 ```json
 {
   "message": "Model retrained and registered",
@@ -119,6 +130,7 @@ http://ml-sentiment-alb-850542821.us-east-2.elb.amazonaws.com/docs
 ```
 
 **What happens:**
+
 1. Loads all feedback from S3
 2. Trains new model on feedback data
 3. Evaluates new model accuracy
@@ -134,11 +146,13 @@ http://ml-sentiment-alb-850542821.us-east-2.elb.amazonaws.com/docs
 3. Click "Execute"
 
 **You'll see:**
+
 - Local models (from retraining-service)
 - SageMaker models (from deployed endpoint)
 - Training jobs
 
 **Response:**
+
 ```json
 {
   "models": [
@@ -169,15 +183,18 @@ http://ml-sentiment-alb-850542821.us-east-2.elb.amazonaws.com/docs
 ## 🎯 Why Use `/evaluate`? (Detailed Explanation)
 
 ### Purpose
+
 **Evaluate** = Measure current model performance using feedback data
 
 ### What It Calculates
+
 - **Accuracy:** Percentage of predictions that matched user labels
 - **Correct/Total:** How many predictions were correct out of total feedback
 
 ### When to Use
 
 1. **Before Retraining:**
+
    - Question: "Is my model bad enough to retrain?"
    - Action: Run `/evaluate`
    - Decision:
@@ -186,6 +203,7 @@ http://ml-sentiment-alb-850542821.us-east-2.elb.amazonaws.com/docs
      - If accuracy > 0.90 → Model is good, maybe skip retraining
 
 2. **After Collecting Feedback:**
+
    - Question: "How accurate is my current model?"
    - Action: Run `/evaluate` to get baseline accuracy
    - Use: Compare before/after retraining
@@ -219,27 +237,30 @@ Verify: Accuracy improved from 60% → 85% ✅
 
 ## 📊 Quick Reference
 
-| Endpoint | Purpose | Body Required? | When to Use |
-|----------|---------|----------------|-------------|
-| `POST /predict` | Get prediction | Yes: `{"text": "..."}` | Every time you want to classify text |
-| `POST /feedback` | Submit correction | Yes: `{"text": "...", "model_prediction": "...", "user_label": "..."}` | When model prediction is wrong |
-| `POST /evaluate` | Check model accuracy | No | After collecting feedback, before retraining |
-| `POST /retrain` | Train new model | No | After 10+ feedback samples collected |
-| `GET /models` | List all models | No | Check what models are available |
+| Endpoint         | Purpose              | Body Required?                                                         | When to Use                                  |
+| ---------------- | -------------------- | ---------------------------------------------------------------------- | -------------------------------------------- |
+| `POST /predict`  | Get prediction       | Yes: `{"text": "..."}`                                                 | Every time you want to classify text         |
+| `POST /feedback` | Submit correction    | Yes: `{"text": "...", "model_prediction": "...", "user_label": "..."}` | When model prediction is wrong               |
+| `POST /evaluate` | Check model accuracy | No                                                                     | After collecting feedback, before retraining |
+| `POST /retrain`  | Train new model      | No                                                                     | After 10+ feedback samples collected         |
+| `GET /models`    | List all models      | No                                                                     | Check what models are available              |
 
 ---
 
 ## ⚠️ Common Issues
 
 **"Insufficient feedback data" when retraining:**
+
 - You need at least 10 feedback samples
 - Submit more using `/feedback` endpoint
 
 **Evaluation returns empty:**
+
 - Make sure you've submitted feedback first
 - Check that feedback is stored in S3
 
 **Models endpoint shows empty:**
+
 - Check if SageMaker endpoint is deployed
 - Check if any models are registered
 

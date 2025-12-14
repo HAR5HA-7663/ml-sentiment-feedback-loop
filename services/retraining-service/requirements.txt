@@ -4,4 +4,5 @@ httpx
 tensorflow
 pandas
 numpy
+boto3
 
