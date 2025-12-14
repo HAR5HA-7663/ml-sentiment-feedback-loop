@@ -1,139 +1,265 @@
 from fastapi import FastAPI, Request
-import pandas as pd
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-import pickle
-import json
-import httpx
-from pathlib import Path
+import os
+import boto3
+import time
 from datetime import datetime
-import numpy as np
 from app.logging_middleware import RequestLoggingMiddleware, log_info
 
 app = FastAPI()
 app.add_middleware(RequestLoggingMiddleware)
 
-DATASET_FILE = Path("/dataset/train_data.csv")
-MODELS_DIR = Path("/models")
-TOKENIZER_DIR = Path("/models/tokenizers")
-REGISTRY_URL = "http://model-registry-service:8002/register"
+# AWS Configuration
+AWS_REGION = os.getenv("AWS_REGION", "us-east-2")
+MODELS_BUCKET = os.getenv("S3_MODELS_BUCKET", "")
+DATA_BUCKET = os.getenv("S3_DATA_BUCKET", "")
+SAGEMAKER_ROLE_ARN = os.getenv("SAGEMAKER_ROLE_ARN", "")
+PROJECT_NAME = os.getenv("PROJECT_NAME", "ml-sentiment")
 
-MAX_SEQUENCE_LENGTH = 200
-VOCAB_SIZE = 10000
-EMBEDDING_DIM = 128
-
-
-def load_and_preprocess_data():
-    df = pd.read_csv(DATASET_FILE)
-    
-    texts = df['reviews.text'].fillna('').astype(str).tolist()
-    labels = df['sentiment'].fillna('Neutral').tolist()
-    
-    label_map = {'Positive': 0, 'Negative': 1, 'Neutral': 2}
-    labels_numeric = [label_map.get(label, 2) for label in labels]
-    
-    tokenizer = Tokenizer(num_words=VOCAB_SIZE, oov_token="<OOV>")
-    tokenizer.fit_on_texts(texts)
-    
-    sequences = tokenizer.texts_to_sequences(texts)
-    X = pad_sequences(sequences, maxlen=MAX_SEQUENCE_LENGTH)
-    y = np.array(labels_numeric)
-    
-    split_idx = int(len(X) * 0.8)
-    X_train, X_test = X[:split_idx], X[split_idx:]
-    y_train, y_test = y[:split_idx], y[split_idx:]
-    
-    return X_train, X_test, y_train, y_test, tokenizer
-
-
-def build_model():
-    model = keras.Sequential([
-        keras.layers.Embedding(VOCAB_SIZE, EMBEDDING_DIM, input_length=MAX_SEQUENCE_LENGTH),
-        keras.layers.GlobalAveragePooling1D(),
-        keras.layers.Dense(64, activation='relu'),
-        keras.layers.Dropout(0.5),
-        keras.layers.Dense(3, activation='softmax')
-    ])
-    
-    model.compile(
-        optimizer='adam',
-        loss='sparse_categorical_crossentropy',
-        metrics=['accuracy']
-    )
-    
-    return model
+# Initialize clients
+sagemaker_client = boto3.client('sagemaker', region_name=AWS_REGION)
+s3_client = boto3.client('s3', region_name=AWS_REGION)
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "sagemaker_enabled": bool(SAGEMAKER_ROLE_ARN),
+        "data_bucket": DATA_BUCKET,
+        "models_bucket": MODELS_BUCKET
+    }
 
 
 @app.post("/bootstrap")
 async def bootstrap(request: Request):
+    """
+    Bootstrap initial model by triggering SageMaker training job
+    """
     request_id = getattr(request.state, "request_id", "unknown")
     
     try:
-        log_info(request_id, "Starting initial model bootstrap")
+        log_info(request_id, "Starting SageMaker model bootstrap")
         
-        X_train, X_test, y_train, y_test, tokenizer = load_and_preprocess_data()
+        # Check if training data exists in S3
+        data_key = "train_data.csv"
+        log_info(request_id, f"Checking for training data: s3://{DATA_BUCKET}/{data_key}")
         
-        log_info(request_id, f"Data loaded: {len(X_train)} training samples, {len(X_test)} test samples")
+        try:
+            s3_client.head_object(Bucket=DATA_BUCKET, Key=data_key)
+            log_info(request_id, "Training data found in S3")
+        except:
+            return {
+                "error": "Training data not found in S3",
+                "message": f"Please upload train_data.csv to s3://{DATA_BUCKET}/{data_key}"
+            }
         
-        log_info(request_id, "Building and training initial model")
+        # Create unique job name
+        timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+        training_job_name = f"{PROJECT_NAME}-training-{timestamp}"
         
-        model = build_model()
+        log_info(request_id, f"Creating SageMaker training job: {training_job_name}")
         
-        history = model.fit(
-            X_train, y_train,
-            epochs=5,
-            batch_size=32,
-            validation_split=0.2,
-            verbose=1
-        )
-        
-        test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=0)
-        
-        log_info(request_id, f"Model training complete | Test accuracy: {test_accuracy:.4f}")
-        
-        version = f"v{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        
-        MODELS_DIR.mkdir(exist_ok=True, parents=True)
-        TOKENIZER_DIR.mkdir(exist_ok=True, parents=True)
-        
-        model_path = MODELS_DIR / f"model_{version}.keras"
-        model.save(str(model_path))
-        
-        tokenizer_path = TOKENIZER_DIR / f"tokenizer_{version}.pkl"
-        with open(tokenizer_path, 'wb') as f:
-            pickle.dump(tokenizer, f)
-        
-        model_registry_path = f"/models/model_{version}.keras"
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                REGISTRY_URL,
-                json={
-                    "version": version,
-                    "path": model_registry_path,
-                    "accuracy": float(test_accuracy),
-                    "is_active": True
+        # Training job configuration
+        training_config = {
+            'TrainingJobName': training_job_name,
+            'RoleArn': SAGEMAKER_ROLE_ARN,
+            'AlgorithmSpecification': {
+                'TrainingImage': f'763104351884.dkr.ecr.{AWS_REGION}.amazonaws.com/tensorflow-training:2.11-cpu-py39',
+                'TrainingInputMode': 'File',
+                'EnableSageMakerMetricsTimeSeries': True
+            },
+            'InputDataConfig': [
+                {
+                    'ChannelName': 'train',
+                    'DataSource': {
+                        'S3DataSource': {
+                            'S3DataType': 'S3Prefix',
+                            'S3Uri': f's3://{DATA_BUCKET}/',
+                            'S3DataDistributionType': 'FullyReplicated'
+                        }
+                    },
+                    'ContentType': 'text/csv'
                 }
-            )
-            response.raise_for_status()
+            ],
+            'OutputDataConfig': {
+                'S3OutputPath': f's3://{MODELS_BUCKET}/training-output/'
+            },
+            'ResourceConfig': {
+                'InstanceType': 'ml.m5.large',
+                'InstanceCount': 1,
+                'VolumeSizeInGB': 30
+            },
+            'StoppingCondition': {
+                'MaxRuntimeInSeconds': 3600
+            },
+            'HyperParameters': {
+                'epochs': '5',
+                'batch-size': '32',
+                'sagemaker_program': 'train.py',
+                'sagemaker_submit_directory': f's3://{MODELS_BUCKET}/sagemaker-scripts/',
+                'sagemaker_region': AWS_REGION
+            },
+            'Tags': [
+                {'Key': 'Project', 'Value': PROJECT_NAME},
+                {'Key': 'Type', 'Value': 'InitialModel'}
+            ]
+        }
         
-        log_info(request_id, f"Bootstrap complete | Model version: {version} | Registered as active")
+        # Start training job
+        response = sagemaker_client.create_training_job(**training_config)
+        
+        log_info(request_id, f"Training job created: {training_job_name}")
+        log_info(request_id, "Training will take approximately 15-20 minutes")
         
         return {
-            "message": "Model trained and registered",
-            "version": version,
-            "path": model_registry_path,
-            "accuracy": float(test_accuracy),
-            "test_loss": float(test_loss)
+            "message": "SageMaker training job started",
+            "training_job_name": training_job_name,
+            "status": "InProgress",
+            "estimated_time": "15-20 minutes",
+            "note": "Use /status endpoint to check progress"
         }
     
     except Exception as e:
+        log_info(request_id, f"Error: {str(e)}")
         return {"error": str(e)}
+
+
+@app.get("/status/{job_name}")
+async def get_training_status(job_name: str):
+    """Check status of a training job"""
+    try:
+        response = sagemaker_client.describe_training_job(TrainingJobName=job_name)
+        
+        status = response['TrainingJobStatus']
+        
+        result = {
+            "job_name": job_name,
+            "status": status,
+            "creation_time": str(response.get('CreationTime', '')),
+            "training_start_time": str(response.get('TrainingStartTime', '')),
+            "training_end_time": str(response.get('TrainingEndTime', ''))
+        }
+        
+        if status == 'Completed':
+            result['model_artifacts'] = response.get('ModelArtifacts', {}).get('S3ModelArtifacts', '')
+            result['message'] = 'Training completed! Model is ready.'
+        elif status == 'Failed':
+            result['failure_reason'] = response.get('FailureReason', 'Unknown')
+        elif status == 'InProgress':
+            result['message'] = 'Training in progress...'
+        
+        return result
+    
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/deploy/{job_name}")
+async def deploy_model(job_name: str, request: Request):
+    """Deploy trained model to SageMaker endpoint"""
+    request_id = getattr(request.state, "request_id", "unknown")
+    
+    try:
+        log_info(request_id, f"Deploying model from job: {job_name}")
+        
+        # Get training job details
+        training_job = sagemaker_client.describe_training_job(TrainingJobName=job_name)
+        
+        if training_job['TrainingJobStatus'] != 'Completed':
+            return {"error": "Training job not completed yet"}
+        
+        model_data = training_job['ModelArtifacts']['S3ModelArtifacts']
+        
+        # Create model
+        timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+        model_name = f"{PROJECT_NAME}-model-{timestamp}"
+        
+        log_info(request_id, f"Creating SageMaker model: {model_name}")
+        
+        sagemaker_client.create_model(
+            ModelName=model_name,
+            PrimaryContainer={
+                'Image': f'763104351884.dkr.ecr.{AWS_REGION}.amazonaws.com/tensorflow-inference:2.11-cpu',
+                'ModelDataUrl': model_data,
+                'Environment': {
+                    'SAGEMAKER_PROGRAM': 'inference.py',
+                    'SAGEMAKER_SUBMIT_DIRECTORY': f's3://{MODELS_BUCKET}/sagemaker-scripts/',
+                    'SAGEMAKER_REGION': AWS_REGION
+                }
+            },
+            ExecutionRoleArn=SAGEMAKER_ROLE_ARN
+        )
+        
+        # Create endpoint configuration
+        endpoint_config_name = f"{PROJECT_NAME}-endpoint-config-{timestamp}"
+        
+        log_info(request_id, f"Creating endpoint configuration: {endpoint_config_name}")
+        
+        sagemaker_client.create_endpoint_config(
+            EndpointConfigName=endpoint_config_name,
+            ProductionVariants=[
+                {
+                    'VariantName': 'AllTraffic',
+                    'ModelName': model_name,
+                    'InstanceType': 'ml.t2.medium',
+                    'InitialInstanceCount': 1,
+                    'InitialVariantWeight': 1.0
+                }
+            ]
+        )
+        
+        # Create or update endpoint
+        endpoint_name = f"{PROJECT_NAME}-endpoint"
+        
+        try:
+            # Try to update existing endpoint
+            log_info(request_id, f"Updating endpoint: {endpoint_name}")
+            sagemaker_client.update_endpoint(
+                EndpointName=endpoint_name,
+                EndpointConfigName=endpoint_config_name
+            )
+            action = "updated"
+        except sagemaker_client.exceptions.ClientError:
+            # Create new endpoint
+            log_info(request_id, f"Creating new endpoint: {endpoint_name}")
+            sagemaker_client.create_endpoint(
+                EndpointName=endpoint_name,
+                EndpointConfigName=endpoint_config_name
+            )
+            action = "created"
+        
+        log_info(request_id, f"Endpoint {action}: {endpoint_name}")
+        
+        return {
+            "message": f"Model deployment {action}",
+            "endpoint_name": endpoint_name,
+            "model_name": model_name,
+            "status": "Creating",
+            "estimated_time": "3-5 minutes",
+            "note": "Endpoint will be available shortly"
+        }
+    
+    except Exception as e:
+        log_info(request_id, f"Deployment error: {str(e)}")
+        return {"error": str(e)}
+
+
+@app.get("/endpoint-status")
+async def get_endpoint_status():
+    """Check if endpoint is ready"""
+    try:
+        endpoint_name = f"{PROJECT_NAME}-endpoint"
+        response = sagemaker_client.describe_endpoint(EndpointName=endpoint_name)
+        
+        return {
+            "endpoint_name": endpoint_name,
+            "status": response['EndpointStatus'],
+            "creation_time": str(response.get('CreationTime', '')),
+            "last_modified_time": str(response.get('LastModifiedTime', ''))
+        }
+    except sagemaker_client.exceptions.ClientError as e:
+        if 'Could not find endpoint' in str(e):
+            return {"status": "NotFound", "message": "Endpoint does not exist yet"}
+        return {"error": str(e)}
+
 

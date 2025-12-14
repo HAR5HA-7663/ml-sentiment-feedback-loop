@@ -83,3 +83,8 @@ variable "sagemaker_endpoint" {
   description = "SageMaker endpoint name"
   type        = string
 }
+
+variable "sagemaker_role_arn" {
+  description = "SageMaker execution role ARN"
+  type        = string
+}

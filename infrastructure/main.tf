@@ -46,17 +46,20 @@ module "ecs" {
   models_bucket      = module.s3.models_bucket_name
   data_bucket        = module.s3.data_bucket_name
   artifacts_bucket   = module.s3.artifacts_bucket_name
-  sagemaker_endpoint = module.sagemaker.endpoint_name
+  sagemaker_endpoint = "${var.project_name}-endpoint"
+  sagemaker_role_arn = module.iam.sagemaker_role_arn
 }
 
 # SageMaker Training Pipeline and Endpoint
-module "sagemaker" {
-  source             = "./modules/sagemaker"
-  project_name       = var.project_name
-  sagemaker_role_arn = module.iam.sagemaker_role_arn
-  models_bucket      = module.s3.models_bucket_name
-  data_bucket        = module.s3.data_bucket_name
-}
+# Note: Model will be created dynamically by model-init-service
+# Disabling Terraform-managed SageMaker to avoid chicken-egg problem
+# module "sagemaker" {
+#   source             = "./modules/sagemaker"
+#   project_name       = var.project_name
+#   sagemaker_role_arn = module.iam.sagemaker_role_arn
+#   models_bucket      = module.s3.models_bucket_name
+#   data_bucket        = module.s3.data_bucket_name
+# }
 
 # Auto-Shutdown Lambda (11 PM - 7 AM)
 module "lambda" {

@@ -136,20 +136,28 @@ resource "aws_ecs_task_definition" "services" {
         value = data.aws_region.current.name
       },
       {
-        name  = "MODELS_BUCKET"
+        name  = "S3_MODELS_BUCKET"
         value = var.models_bucket
       },
       {
-        name  = "DATA_BUCKET"
+        name  = "S3_DATA_BUCKET"
         value = var.data_bucket
       },
       {
-        name  = "ARTIFACTS_BUCKET"
+        name  = "S3_ARTIFACTS_BUCKET"
         value = var.artifacts_bucket
       },
       {
-        name  = "SAGEMAKER_ENDPOINT"
+        name  = "SAGEMAKER_ENDPOINT_NAME"
         value = var.sagemaker_endpoint
+      },
+      {
+        name  = "SAGEMAKER_ROLE_ARN"
+        value = var.sagemaker_role_arn
+      },
+      {
+        name  = "PROJECT_NAME"
+        value = var.project_name
       },
       # Service discovery URLs
       {

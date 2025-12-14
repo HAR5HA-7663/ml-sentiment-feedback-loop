@@ -1,7 +1,6 @@
 fastapi
 uvicorn[standard]
+boto3
+sagemaker
 pandas
-tensorflow
-numpy
-httpx
 
