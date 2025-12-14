@@ -176,6 +176,63 @@ async def get_models(request: Request):
     return result
 
 
+# Model Initialization Service Routes
+@app.post("/model-init/bootstrap")
+async def bootstrap_model(request: Request):
+    request_id = get_or_generate_request_id(request)
+    
+    result = forward_request(
+        SERVICE_URLS["model-init"],
+        "/bootstrap",
+        "POST",
+        request_id
+    )
+    
+    return result
+
+
+@app.get("/model-init/status/{job_name}")
+async def get_training_status(request: Request, job_name: str):
+    request_id = get_or_generate_request_id(request)
+    
+    result = forward_request(
+        SERVICE_URLS["model-init"],
+        f"/status/{job_name}",
+        "GET",
+        request_id
+    )
+    
+    return result
+
+
+@app.post("/model-init/deploy/{job_name}")
+async def deploy_model(request: Request, job_name: str):
+    request_id = get_or_generate_request_id(request)
+    
+    result = forward_request(
+        SERVICE_URLS["model-init"],
+        f"/deploy/{job_name}",
+        "POST",
+        request_id
+    )
+    
+    return result
+
+
+@app.get("/model-init/endpoint-status")
+async def get_endpoint_status(request: Request):
+    request_id = get_or_generate_request_id(request)
+    
+    result = forward_request(
+        SERVICE_URLS["model-init"],
+        "/endpoint-status",
+        "GET",
+        request_id
+    )
+    
+    return result
+
+
 @app.get("/")
 async def root():
     return {
@@ -187,6 +244,10 @@ async def root():
             "POST /evaluate": "Run model evaluation",
             "POST /retrain": "Trigger model retraining",
             "GET /models": "List all models",
-            "GET /health": "Check system health"
+            "GET /health": "Check system health",
+            "POST /model-init/bootstrap": "Start SageMaker training",
+            "GET /model-init/status/{job_name}": "Check training status",
+            "POST /model-init/deploy/{job_name}": "Deploy trained model",
+            "GET /model-init/endpoint-status": "Check endpoint status"
         }
     }
