@@ -220,7 +220,12 @@ jobs:
       - name: Upload training data to S3
         run: |
           echo "Uploading training data to S3..."
-          aws s3 cp Dataset/train_data.csv s3://ml-sentiment-data-${{ env.AWS_ACCOUNT_ID }}/training/train_data.csv --region ${{ env.AWS_REGION }} || echo "Bucket may not exist yet, will be created by Terraform"
+          aws s3 cp Dataset/train_data.csv s3://ml-sentiment-data-${{ env.AWS_ACCOUNT_ID }}/train_data.csv --region ${{ env.AWS_REGION }} || echo "Bucket may not exist yet, will be created by Terraform"
+          
+      - name: Upload SageMaker scripts to S3
+        run: |
+          echo "Uploading SageMaker training scripts to S3..."
+          aws s3 sync sagemaker-scripts/ s3://ml-sentiment-models-${{ env.AWS_ACCOUNT_ID }}/sagemaker-scripts/ --region ${{ env.AWS_REGION }} || echo "Bucket may not exist yet, will be created by Terraform"
 
       - name: Terraform Init
         working-directory: ./infrastructure
