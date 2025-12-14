@@ -1,4 +1,6 @@
 fastapi
 uvicorn[standard]
 boto3
+tensorflow==2.11.0
+numpy
 

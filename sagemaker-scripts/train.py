@@ -118,6 +118,18 @@ if __name__ == '__main__':
     with open(tokenizer_path, 'wb') as f:
         pickle.dump(tokenizer, f)
     
+    # Also save tokenizer to S3 for inference service access
+    try:
+        import boto3
+        s3_client = boto3.client('s3')
+        models_bucket = os.environ.get('MODELS_BUCKET') or os.environ.get('S3_MODELS_BUCKET')
+        if models_bucket:
+            s3_key = 'tokenizers/latest_tokenizer.pkl'
+            s3_client.upload_file(tokenizer_path, models_bucket, s3_key)
+            print(f"Tokenizer also saved to s3://{models_bucket}/{s3_key}")
+    except Exception as e:
+        print(f"Warning: Could not save tokenizer to S3: {e}")
+    
     # Save metrics
     metrics = {
         'accuracy': float(test_accuracy),
