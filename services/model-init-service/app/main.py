@@ -99,6 +99,10 @@ async def bootstrap(request: Request):
                 'sagemaker_submit_directory': f's3://{MODELS_BUCKET}/sagemaker-scripts/sourcedir.tar.gz',
                 'sagemaker_region': AWS_REGION
             },
+            'Environment': {
+                'MODELS_BUCKET': MODELS_BUCKET,
+                'S3_MODELS_BUCKET': MODELS_BUCKET
+            },
             'Tags': [
                 {'Key': 'Project', 'Value': PROJECT_NAME},
                 {'Key': 'Type', 'Value': 'InitialModel'}
