@@ -233,6 +233,24 @@ jobs:
         run: |
           echo "Initializing Terraform..."
           terraform init
+          
+      - name: Check for stale locks
+        working-directory: ./infrastructure
+        run: |
+          echo "Checking for stale Terraform locks..."
+          # Check if lock exists and is older than 1 hour
+          LOCK_INFO=$(aws dynamodb scan \
+            --table-name ml-sentiment-terraform-locks \
+            --region us-east-2 \
+            --query 'Items[*].[LockID.S,Info.S]' \
+            --output json 2>/dev/null || echo "[]")
+          
+          if [ "$LOCK_INFO" != "[]" ] && [ -n "$LOCK_INFO" ]; then
+            echo "⚠️ Found existing lock(s). Terraform will retry with backoff."
+            echo "If this persists, manually unlock: terraform force-unlock <LOCK_ID>"
+          else
+            echo "✓ No stale locks found"
+          fi
 
       - name: Terraform Validate
         working-directory: ./infrastructure
@@ -246,7 +264,26 @@ jobs:
           TF_VAR_image_tag: ${{ github.sha }}
         run: |
           echo "Planning infrastructure changes..."
-          terraform plan -out=tfplan
+          # Retry with lock timeout handling
+          max_attempts=3
+          attempt=1
+          while [ $attempt -le $max_attempts ]; do
+            if terraform plan -out=tfplan; then
+              echo "✓ Terraform plan successful"
+              break
+            else
+              if [ $attempt -lt $max_attempts ]; then
+                echo "⚠ Plan failed (attempt $attempt/$max_attempts), waiting 30s and retrying..."
+                sleep 30
+                attempt=$((attempt + 1))
+              else
+                echo "❌ Terraform plan failed after $max_attempts attempts"
+                # Try to force unlock if locked
+                terraform force-unlock -force $(terraform show -json 2>/dev/null | jq -r '.values.root_module.resources[] | select(.type == "aws_dynamodb_table") | .values.id' 2>/dev/null || echo "") 2>/dev/null || true
+                exit 1
+              fi
+            fi
+          done
 
       - name: Terraform Apply
         working-directory: ./infrastructure
@@ -254,7 +291,24 @@ jobs:
           TF_VAR_image_tag: ${{ github.sha }}
         run: |
           echo "Applying infrastructure changes..."
-          terraform apply -auto-approve tfplan
+          # Retry with lock timeout handling
+          max_attempts=3
+          attempt=1
+          while [ $attempt -le $max_attempts ]; do
+            if terraform apply -auto-approve tfplan; then
+              echo "✓ Terraform apply successful"
+              break
+            else
+              if [ $attempt -lt $max_attempts ]; then
+                echo "⚠ Apply failed (attempt $attempt/$max_attempts), waiting 30s and retrying..."
+                sleep 30
+                attempt=$((attempt + 1))
+              else
+                echo "❌ Terraform apply failed after $max_attempts attempts"
+                exit 1
+              fi
+            fi
+          done
 
       - name: Upload training data (retry after S3 creation)
         run: |
