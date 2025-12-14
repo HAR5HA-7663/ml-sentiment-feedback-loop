@@ -83,16 +83,22 @@ def load_tokenizer():
         # Check if tokenizer was saved separately
         tokenizer_key = "tokenizers/latest_tokenizer.pkl"
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pkl') as tmp_file:
-                s3_client.download_fileobj(MODELS_BUCKET, tokenizer_key, tmp_file)
-                tmp_file.seek(0)
-                _tokenizer = pickle.load(tmp_file)
-                _tokenizer_loaded = True
-                log_info("inference", "Tokenizer loaded successfully")
-                return _tokenizer
-        except:
-            log_info("inference", f"Tokenizer not found at {tokenizer_key}, will try model.tar.gz extraction")
+            # Download to a temporary file
+            tmp_file_path = tempfile.mktemp(suffix='.pkl')
+            s3_client.download_file(MODELS_BUCKET, tokenizer_key, tmp_file_path)
             
+            # Load tokenizer from file
+            with open(tmp_file_path, 'rb') as f:
+                _tokenizer = pickle.load(f)
+            
+            # Clean up temp file
+            os.unlink(tmp_file_path)
+            
+            _tokenizer_loaded = True
+            log_info("inference", "Tokenizer loaded successfully from S3")
+            return _tokenizer
+        except Exception as e:
+            log_info("inference", f"Error loading tokenizer from {tokenizer_key}: {str(e)}")
             # Try to extract from model.tar.gz
             # This is more complex - for now, return None and we'll handle it
             return None
