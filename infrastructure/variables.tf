@@ -84,35 +84,35 @@ variable "services" {
       port          = 8000
       health_path   = "/health"
       desired_count = 1
-      expose_to_alb = true
+      expose_to_alb = false  # Internal only
     },
     {
       name          = "feedback-service"
       port          = 8001
       health_path   = "/health"
       desired_count = 1
-      expose_to_alb = true
+      expose_to_alb = false  # Internal only
     },
     {
       name          = "model-registry-service"
       port          = 8002
       health_path   = "/health"
       desired_count = 1
-      expose_to_alb = true
+      expose_to_alb = false  # Internal only
     },
     {
       name          = "evaluation-service"
       port          = 8003
       health_path   = "/health"
       desired_count = 1
-      expose_to_alb = true
+      expose_to_alb = false  # Internal only
     },
     {
       name          = "retraining-service"
       port          = 8004
       health_path   = "/health"
       desired_count = 1
-      expose_to_alb = true
+      expose_to_alb = false  # Internal only
     },
     {
       name          = "notification-service"
