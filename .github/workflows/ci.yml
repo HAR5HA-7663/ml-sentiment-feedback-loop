@@ -233,7 +233,7 @@ jobs:
         run: |
           echo "Initializing Terraform..."
           terraform init
-          
+
       - name: Check for stale locks
         working-directory: ./infrastructure
         run: |
@@ -244,7 +244,7 @@ jobs:
             --region us-east-2 \
             --query 'Items[*].[LockID.S,Info.S]' \
             --output json 2>/dev/null || echo "[]")
-          
+
           if [ "$LOCK_INFO" != "[]" ] && [ -n "$LOCK_INFO" ]; then
             echo "⚠️ Found existing lock(s). Terraform will retry with backoff."
             echo "If this persists, manually unlock: terraform force-unlock <LOCK_ID>"
@@ -291,21 +291,25 @@ jobs:
           TF_VAR_image_tag: ${{ github.sha }}
         run: |
           echo "Applying infrastructure changes..."
-          # Retry with lock timeout handling
-          max_attempts=3
+          # Retry with exponential backoff for lock handling
+          max_attempts=5
           attempt=1
+          wait_time=10
+
           while [ $attempt -le $max_attempts ]; do
-            if terraform apply -auto-approve tfplan; then
+            if terraform apply -auto-approve tfplan -lock-timeout=5m; then
               echo "✓ Terraform apply successful"
               break
             else
-              if [ $attempt -lt $max_attempts ]; then
-                echo "⚠ Apply failed (attempt $attempt/$max_attempts), waiting 30s and retrying..."
-                sleep 30
+              EXIT_CODE=$?
+              if [ $EXIT_CODE -eq 1 ] && [ $attempt -lt $max_attempts ]; then
+                echo "⚠ Apply failed (attempt $attempt/$max_attempts), waiting ${wait_time}s and retrying..."
+                sleep $wait_time
+                wait_time=$((wait_time * 2))  # Exponential backoff
                 attempt=$((attempt + 1))
               else
                 echo "❌ Terraform apply failed after $max_attempts attempts"
-                exit 1
+                exit $EXIT_CODE
               fi
             fi
           done
