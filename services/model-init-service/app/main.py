@@ -179,12 +179,14 @@ async def deploy_model(job_name: str, request: Request):
         sagemaker_client.create_model(
             ModelName=model_name,
             PrimaryContainer={
-                'Image': f'763104351884.dkr.ecr.{AWS_REGION}.amazonaws.com/tensorflow-inference:2.11-cpu',
+                'Image': f'763104351884.dkr.ecr.{AWS_REGION}.amazonaws.com/tensorflow-training:2.11-cpu-py39',
                 'ModelDataUrl': model_data,
+                'Mode': 'SingleModel',
                 'Environment': {
                     'SAGEMAKER_PROGRAM': 'inference.py',
                     'SAGEMAKER_SUBMIT_DIRECTORY': f's3://{MODELS_BUCKET}/sagemaker-scripts/sourcedir.tar.gz',
-                    'SAGEMAKER_REGION': AWS_REGION
+                    'SAGEMAKER_REGION': AWS_REGION,
+                    'SAGEMAKER_CONTAINER_LOG_LEVEL': '20'
                 }
             },
             ExecutionRoleArn=SAGEMAKER_ROLE_ARN
