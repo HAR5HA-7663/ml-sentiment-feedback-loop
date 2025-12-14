@@ -29,6 +29,7 @@ All infrastructure is deployed and configured! The last IAM permission fix is be
 ```
 
 This script will:
+
 1. Wait for deployment to finish
 2. Automatically trigger training
 3. Monitor progress
@@ -63,6 +64,7 @@ Invoke-RestMethod -Uri "$ALB_URL/model-init/endpoint-status"
 ## 📊 **Monitor in AWS Console**
 
 ### **SageMaker Training**
+
 1. Go to: https://console.aws.amazon.com/sagemaker
 2. Region: **us-east-2 (Ohio)**
 3. Left menu: **Training** → **Training jobs**
@@ -74,6 +76,7 @@ Invoke-RestMethod -Uri "$ALB_URL/model-init/endpoint-status"
    - Resource utilization
 
 ### **GitHub Actions**
+
 - https://github.com/HAR5HA-7663/ml-sentiment-feedback-loop/actions
 - Current workflow: "Fix IAM permissions for SageMaker training"
 - Wait for it to complete (green checkmark)
@@ -85,6 +88,7 @@ Invoke-RestMethod -Uri "$ALB_URL/model-init/endpoint-status"
 ### **1. Training Phase (~15-20 minutes)**
 
 SageMaker will:
+
 - Load `train_data.csv` from S3 (4000 Amazon product reviews)
 - Preprocess text data
 - Train TensorFlow/Keras sentiment model
@@ -92,6 +96,7 @@ SageMaker will:
 - Save model to S3
 
 You'll see in AWS Console:
+
 - Job status: "InProgress"
 - Real-time logs
 - Training metrics
@@ -99,6 +104,7 @@ You'll see in AWS Console:
 ### **2. Deployment Phase (~3-5 minutes)**
 
 After training:
+
 - Model registered in SageMaker
 - Endpoint configuration created
 - Endpoint deployed (ml.t2.medium instance)
@@ -159,21 +165,25 @@ Retraining (/retrain) → Can trigger new SageMaker job
 ### **Show These:**
 
 1. **GitHub Repository**
+
    - Microservices architecture
    - CI/CD pipeline with GitHub Actions
    - Infrastructure as Code (Terraform)
 
 2. **AWS Console - SageMaker**
+
    - Training job running/completed
    - Model metrics (accuracy)
    - Deployed endpoint
 
 3. **AWS Console - ECS**
+
    - 8 microservices running
    - Service discovery (Cloud Map)
    - Load balancer
 
 4. **API Gateway**
+
    - Single entry point
    - Unified endpoints
    - Health checks
@@ -189,25 +199,30 @@ Retraining (/retrain) → Can trigger new SageMaker job
 ## ⚠️ **If Something Goes Wrong**
 
 ### **Training fails?**
+
 ```powershell
 # Check logs
 aws logs tail /aws/sagemaker/TrainingJobs --follow --region us-east-2
 ```
 
 ### **Endpoint not working?**
+
 ```powershell
 # Check status
 Invoke-RestMethod -Uri "$ALB_URL/model-init/endpoint-status"
 ```
 
 ### **Services down?**
+
 ```powershell
 # Check health
 Invoke-RestMethod -Uri "$ALB_URL/health" | ConvertTo-Json
 ```
 
 ### **Still issues?**
+
 Check ECS service logs in AWS Console:
+
 - CloudWatch → Log groups → `/ecs/ml-sentiment/[service-name]`
 
 ---
@@ -215,6 +230,7 @@ Check ECS service logs in AWS Console:
 ## 💰 **Cost Reminder**
 
 Running for 5-7 days as planned:
+
 - SageMaker training: ~$2 (one-time)
 - SageMaker endpoint: ~$0.05/hour × 168 hours = ~$8.40
 - ECS tasks: ~$15
@@ -234,7 +250,7 @@ Way under your $180/month budget!
 ✅ API Gateway pattern  
 ✅ Service discovery (AWS Cloud Map)  
 ✅ Feedback loop with S3 persistence  
-✅ Model evaluation and retraining capability  
+✅ Model evaluation and retraining capability
 
 **This is a real, scalable ML system!** 🚀
 

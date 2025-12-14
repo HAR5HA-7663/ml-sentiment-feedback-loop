@@ -96,7 +96,7 @@ async def bootstrap(request: Request):
                 'epochs': '5',
                 'batch-size': '32',
                 'sagemaker_program': 'train.py',
-                'sagemaker_submit_directory': f's3://{MODELS_BUCKET}/sagemaker-scripts/',
+                'sagemaker_submit_directory': f's3://{MODELS_BUCKET}/sagemaker-scripts/sourcedir.tar.gz',
                 'sagemaker_region': AWS_REGION
             },
             'Tags': [
@@ -183,7 +183,7 @@ async def deploy_model(job_name: str, request: Request):
                 'ModelDataUrl': model_data,
                 'Environment': {
                     'SAGEMAKER_PROGRAM': 'inference.py',
-                    'SAGEMAKER_SUBMIT_DIRECTORY': f's3://{MODELS_BUCKET}/sagemaker-scripts/',
+                    'SAGEMAKER_SUBMIT_DIRECTORY': f's3://{MODELS_BUCKET}/sagemaker-scripts/sourcedir.tar.gz',
                     'SAGEMAKER_REGION': AWS_REGION
                 }
             },
