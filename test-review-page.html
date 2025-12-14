@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Review - Sentiment Analysis</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+            animation: slideUp 0.5s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 28px;
+        }
+
+        .product-image {
+            width: 100%;
+            height: 300px;
+            object-fit: cover;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .review-section {
+            margin-bottom: 30px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 10px;
+            color: #555;
+            font-weight: 600;
+            font-size: 16px;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            font-family: inherit;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .publish-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .publish-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .publish-btn:active {
+            transform: translateY(0);
+        }
+
+        .publish-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translate(-50%, -60%);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, -50%);
+            }
+        }
+
+        .sentiment-icon {
+            font-size: 60px;
+            margin-bottom: 20px;
+        }
+
+        .sentiment-positive {
+            color: #4caf50;
+        }
+
+        .sentiment-negative {
+            color: #f44336;
+        }
+
+        .sentiment-neutral {
+            color: #ff9800;
+        }
+
+        .modal h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 24px;
+        }
+
+        .modal p {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+            line-height: 1.6;
+        }
+
+        .feedback-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+
+        .feedback-btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            flex: 1;
+        }
+
+        .feedback-btn-positive {
+            background: #4caf50;
+            color: white;
+        }
+
+        .feedback-btn-negative {
+            background: #f44336;
+            color: white;
+        }
+
+        .feedback-btn-neutral {
+            background: #ff9800;
+            color: white;
+        }
+
+        .feedback-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .feedback-btn:active {
+            transform: translateY(0);
+        }
+
+        .close-btn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #e0e0e0;
+            color: #333;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .close-btn:hover {
+            background: #d0d0d0;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .success-message {
+            background: #4caf50;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            text-align: center;
+            display: none;
+        }
+
+        .error-message {
+            background: #f44336;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📦 Product Review</h1>
+        
+        <img src="https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600&h=300&fit=crop" 
+             alt="Product" 
+             class="product-image"
+             onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27600%27 height=%27300%27%3E%3Crect fill=%27%23ddd%27 width=%27600%27 height=%27300%27/%3E%3Ctext fill=%27%23999%27 font-family=%27sans-serif%27 font-size=%2720%27 x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27 dy=%27.3em%27%3EProduct Image%3C/text%3E%3C/svg%3E'">
+        
+        <div class="review-section">
+            <label for="reviewText">Write your review:</label>
+            <textarea 
+                id="reviewText" 
+                placeholder="Share your thoughts about this product..."
+                rows="5"></textarea>
+        </div>
+
+        <button class="publish-btn" id="publishBtn" onclick="publishReview()">
+            Publish Review
+        </button>
+
+        <div class="success-message" id="successMessage">
+            ✓ Feedback submitted successfully!
+        </div>
+
+        <div class="error-message" id="errorMessage">
+            ✗ An error occurred. Please try again.
+        </div>
+    </div>
+
+    <div class="modal" id="feedbackModal">
+        <div class="modal-content">
+            <div class="sentiment-icon" id="sentimentIcon">😊</div>
+            <h2 id="sentimentTitle">Positive Review Detected</h2>
+            <p id="sentimentMessage">
+                We detected this as a <strong id="detectedSentiment">positive</strong> review.
+                <br><br>
+                If you think this is wrong, please help us by giving us feedback:
+            </p>
+            <div class="feedback-buttons" id="feedbackButtons">
+                <button class="feedback-btn feedback-btn-positive" onclick="submitFeedback('positive')">
+                    Positive
+                </button>
+                <button class="feedback-btn feedback-btn-negative" onclick="submitFeedback('negative')">
+                    Negative
+                </button>
+                <button class="feedback-btn feedback-btn-neutral" onclick="submitFeedback('neutral')">
+                    Neutral
+                </button>
+            </div>
+            <button class="close-btn" onclick="closeModal()">Close</button>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://ml-sentiment-alb-850542821.us-east-2.elb.amazonaws.com';
+        let currentReview = '';
+        let detectedSentiment = '';
+
+        async function publishReview() {
+            const reviewText = document.getElementById('reviewText').value.trim();
+            const publishBtn = document.getElementById('publishBtn');
+            const errorMessage = document.getElementById('errorMessage');
+            const successMessage = document.getElementById('successMessage');
+
+            if (!reviewText) {
+                errorMessage.textContent = 'Please enter a review before publishing.';
+                errorMessage.style.display = 'block';
+                setTimeout(() => {
+                    errorMessage.style.display = 'none';
+                }, 3000);
+                return;
+            }
+
+            currentReview = reviewText;
+            publishBtn.disabled = true;
+            publishBtn.innerHTML = '<span class="loading"></span>Analyzing...';
+            errorMessage.style.display = 'none';
+            successMessage.style.display = 'none';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/predict`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: reviewText })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                detectedSentiment = data.label || 'neutral';
+                const confidence = (data.confidence * 100).toFixed(1);
+
+                showFeedbackModal(detectedSentiment, confidence);
+
+            } catch (error) {
+                console.error('Error:', error);
+                errorMessage.textContent = `Error: ${error.message}. Please check your connection.`;
+                errorMessage.style.display = 'block';
+            } finally {
+                publishBtn.disabled = false;
+                publishBtn.textContent = 'Publish Review';
+            }
+        }
+
+        function showFeedbackModal(sentiment, confidence) {
+            const modal = document.getElementById('feedbackModal');
+            const icon = document.getElementById('sentimentIcon');
+            const title = document.getElementById('sentimentTitle');
+            const message = document.getElementById('sentimentMessage');
+            const detectedSpan = document.getElementById('detectedSentiment');
+
+            let iconEmoji, titleText, colorClass;
+
+            if (sentiment === 'positive') {
+                iconEmoji = '😊';
+                titleText = 'Positive Review Detected';
+                colorClass = 'sentiment-positive';
+            } else if (sentiment === 'negative') {
+                iconEmoji = '😞';
+                titleText = 'Negative Review Detected';
+                colorClass = 'sentiment-negative';
+            } else {
+                iconEmoji = '😐';
+                titleText = 'Neutral Review Detected';
+                colorClass = 'sentiment-neutral';
+            }
+
+            icon.textContent = iconEmoji;
+            icon.className = `sentiment-icon ${colorClass}`;
+            title.textContent = titleText;
+            detectedSpan.textContent = sentiment;
+            detectedSpan.className = colorClass;
+            message.innerHTML = `
+                We detected this as a <strong class="${colorClass}">${sentiment}</strong> review 
+                (${confidence}% confidence).
+                <br><br>
+                If you think this is wrong, please help us by giving us feedback:
+            `;
+
+            modal.style.display = 'block';
+        }
+
+        async function submitFeedback(correctSentiment) {
+            const feedbackButtons = document.getElementById('feedbackButtons');
+            const errorMessage = document.getElementById('errorMessage');
+            const successMessage = document.getElementById('successMessage');
+
+            feedbackButtons.style.pointerEvents = 'none';
+            feedbackButtons.style.opacity = '0.6';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/feedback`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text: currentReview,
+                        model_prediction: detectedSentiment,
+                        user_label: correctSentiment
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                console.log('Feedback submitted:', data);
+
+                closeModal();
+                successMessage.style.display = 'block';
+                document.getElementById('reviewText').value = '';
+
+                setTimeout(() => {
+                    successMessage.style.display = 'none';
+                }, 3000);
+
+            } catch (error) {
+                console.error('Error submitting feedback:', error);
+                errorMessage.textContent = `Error submitting feedback: ${error.message}`;
+                errorMessage.style.display = 'block';
+                setTimeout(() => {
+                    errorMessage.style.display = 'none';
+                }, 3000);
+            } finally {
+                feedbackButtons.style.pointerEvents = 'auto';
+                feedbackButtons.style.opacity = '1';
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('feedbackModal').style.display = 'none';
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('feedbackModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        }
+
+        document.getElementById('reviewText').addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                publishReview();
+            }
+        });
+    </script>
+</body>
+</html>
