@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 env:
   AWS_REGION: us-east-2
@@ -221,7 +222,7 @@ jobs:
         run: |
           echo "Uploading training data to S3..."
           aws s3 cp Dataset/train_data.csv s3://ml-sentiment-data-${{ env.AWS_ACCOUNT_ID }}/train_data.csv --region ${{ env.AWS_REGION }} || echo "Bucket may not exist yet, will be created by Terraform"
-          
+
       - name: Upload SageMaker scripts to S3
         run: |
           echo "Uploading SageMaker training scripts to S3..."
@@ -291,10 +292,10 @@ jobs:
         run: |
           echo "Waiting 60 seconds for services to start..."
           sleep 60
-          
+
           echo "Testing ALB health endpoint..."
           ALB_URL=$(cd infrastructure && terraform output -raw alb_url)
-          
+
           for i in {1..10}; do
             if curl -f "$ALB_URL/health" 2>/dev/null; then
               echo "✓ Health check passed!"
@@ -303,6 +304,6 @@ jobs:
             echo "Attempt $i failed, retrying in 30 seconds..."
             sleep 30
           done
-          
+
           echo "⚠ Services are starting (this may take a few minutes)"
           echo "⚠ Check ECS console for service status"

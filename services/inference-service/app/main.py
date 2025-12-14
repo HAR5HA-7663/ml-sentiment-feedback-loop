@@ -165,13 +165,17 @@ async def predict_sentiment(text: str) -> tuple[str, float]:
         # Format: {"predictions": [[prob_class0, prob_class1, prob_class2], ...]}
         if 'predictions' in result and len(result['predictions']) > 0:
             predictions = result['predictions'][0]  # Get first prediction
-            predicted_class = int(predictions.index(max(predictions)))
-            confidence = float(max(predictions))
             
-            # Map to labels (0=positive, 1=negative, 2=neutral)
+            # Find index of max probability
+            max_prob = max(predictions)
+            predicted_class = predictions.index(max_prob)
+            confidence = float(max_prob)
+            
+            # Map to labels (matches training: 0=Positive, 1=Negative, 2=Neutral)
             label_map = {0: 'positive', 1: 'negative', 2: 'neutral'}
-            label = label_map.get(predicted_class, 'neutral')
+            label = label_map.get(int(predicted_class), 'neutral')
             
+            log_info("inference", f"Prediction: class={predicted_class}, label={label}, confidence={confidence:.4f}")
             return label, confidence
         else:
             log_info("inference", f"Unexpected response format: {result}")
