@@ -12,6 +12,7 @@ from datetime import datetime
 import numpy as np
 import os
 import boto3
+from sklearn.metrics import confusion_matrix
 from app.logging_middleware import RequestLoggingMiddleware, log_info
 
 app = FastAPI()
@@ -176,13 +177,27 @@ async def retrain(request: Request):
         verbose=1
     )
     
+    # Get validation accuracy from training history
+    val_accuracy = None
+    if 'val_accuracy' in history.history and len(history.history['val_accuracy']) > 0:
+        val_accuracy = float(history.history['val_accuracy'][-1])
+        log_info(request_id, f"Validation accuracy: {val_accuracy:.4f}")
+    
+    # Evaluate on test set
     test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=0) if len(X_test) > 0 else (0.0, 0.0)
     if len(X_test) == 0:
         test_accuracy = float(history.history['accuracy'][-1])
+        cm = None
+    else:
+        # Generate confusion matrix on test set
+        y_pred = model.predict(X_test, verbose=0)
+        y_pred_classes = np.argmax(y_pred, axis=1)
+        cm = confusion_matrix(y_test, y_pred_classes).tolist()
+        log_info(request_id, f"Confusion matrix: {cm}")
     
     version = f"v{datetime.now().strftime('%Y%m%d%H%M%S')}"
     
-    log_info(request_id, f"Model training complete | New version: {version} | Accuracy: {test_accuracy:.4f}")
+    log_info(request_id, f"Model training complete | New version: {version} | Test Accuracy: {test_accuracy:.4f}")
     
     MODELS_DIR.mkdir(exist_ok=True, parents=True)
     TOKENIZER_DIR.mkdir(exist_ok=True, parents=True)
@@ -222,11 +237,20 @@ async def retrain(request: Request):
     
     log_info(request_id, f"Model registered and notifications sent")
     
-    return {
+    result = {
         "message": "Model retrained and registered",
         "version": version,
         "path": model_registry_path,
-        "accuracy": float(test_accuracy),
+        "test_accuracy": float(test_accuracy),
         "training_samples": len(feedback_list)
     }
+    
+    if val_accuracy is not None:
+        result["validation_accuracy"] = val_accuracy
+    
+    if cm is not None:
+        result["confusion_matrix"] = cm
+        result["confusion_matrix_labels"] = ["Positive", "Negative", "Neutral"]
+    
+    return result
 

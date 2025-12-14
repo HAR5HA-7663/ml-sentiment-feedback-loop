@@ -12,6 +12,7 @@ from tensorflow import keras
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 import pickle
+from sklearn.metrics import confusion_matrix
 
 # Hyperparameters
 MAX_SEQUENCE_LENGTH = 200
@@ -152,8 +153,10 @@ if __name__ == '__main__':
     metrics = {
         'accuracy': float(test_accuracy),
         'loss': float(test_loss),
+        'validation_accuracy': float(final_val_accuracy) if final_val_accuracy is not None else None,
         'training_samples': len(X_train),
-        'test_samples': len(X_test)
+        'test_samples': len(X_test),
+        'confusion_matrix': cm.tolist()
     }
     
     metrics_path = os.path.join(args.model_dir, 'metrics.json')
