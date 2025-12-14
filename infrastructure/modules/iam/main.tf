@@ -73,9 +73,35 @@ resource "aws_iam_role_policy" "ecs_task_s3_policy" {
         Effect = "Allow"
         Action = [
           "sagemaker:InvokeEndpoint",
-          "sagemaker:DescribeEndpoint"
+          "sagemaker:DescribeEndpoint",
+          "sagemaker:CreateTrainingJob",
+          "sagemaker:DescribeTrainingJob",
+          "sagemaker:CreateModel",
+          "sagemaker:DescribeModel",
+          "sagemaker:CreateEndpointConfig",
+          "sagemaker:CreateEndpoint",
+          "sagemaker:UpdateEndpoint",
+          "sagemaker:AddTags",
+          "sagemaker:ListTags"
         ]
-        Resource = "arn:aws:sagemaker:*:${var.account_id}:endpoint/${var.project_name}-*"
+        Resource = [
+          "arn:aws:sagemaker:*:${var.account_id}:endpoint/${var.project_name}-*",
+          "arn:aws:sagemaker:*:${var.account_id}:training-job/${var.project_name}-*",
+          "arn:aws:sagemaker:*:${var.account_id}:model/${var.project_name}-*",
+          "arn:aws:sagemaker:*:${var.account_id}:endpoint-config/${var.project_name}-*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "iam:PassRole"
+        ]
+        Resource = "arn:aws:iam::${var.account_id}:role/${var.project_name}-sagemaker-role"
+        Condition = {
+          StringEquals = {
+            "iam:PassedToService": "sagemaker.amazonaws.com"
+          }
+        }
       }
     ]
   })
