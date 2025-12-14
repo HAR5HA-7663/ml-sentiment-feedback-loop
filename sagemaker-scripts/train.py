@@ -113,20 +113,38 @@ if __name__ == '__main__':
     model_path = os.path.join(args.model_dir, '1')  # Version 1
     model.save(model_path, save_format='tf')
     
-    # Save tokenizer
+    # Save tokenizer as pickle (for SageMaker)
     tokenizer_path = os.path.join(args.model_dir, 'tokenizer.pkl')
     with open(tokenizer_path, 'wb') as f:
         pickle.dump(tokenizer, f)
     
-    # Also save tokenizer to S3 for inference service access
+    # Also save tokenizer as JSON for inference service (version-independent)
     try:
         import boto3
         s3_client = boto3.client('s3')
         models_bucket = os.environ.get('MODELS_BUCKET') or os.environ.get('S3_MODELS_BUCKET')
         if models_bucket:
-            s3_key = 'tokenizers/latest_tokenizer.pkl'
-            s3_client.upload_file(tokenizer_path, models_bucket, s3_key)
-            print(f"Tokenizer also saved to s3://{models_bucket}/{s3_key}")
+            # Save as JSON (version-independent)
+            tokenizer_json = {
+                'word_index': tokenizer.word_index,
+                'num_words': tokenizer.num_words,
+                'oov_token': tokenizer.oov_token,
+                'document_count': tokenizer.document_count
+            }
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp_file:
+                json.dump(tokenizer_json, tmp_file)
+                tmp_file_path = tmp_file.name
+            
+            s3_key = 'tokenizers/latest_tokenizer.json'
+            s3_client.upload_file(tmp_file_path, models_bucket, s3_key)
+            os.unlink(tmp_file_path)
+            print(f"Tokenizer JSON saved to s3://{models_bucket}/{s3_key}")
+            
+            # Also save pickle for backward compatibility
+            s3_key_pkl = 'tokenizers/latest_tokenizer.pkl'
+            s3_client.upload_file(tokenizer_path, models_bucket, s3_key_pkl)
+            print(f"Tokenizer pickle saved to s3://{models_bucket}/{s3_key_pkl}")
     except Exception as e:
         print(f"Warning: Could not save tokenizer to S3: {e}")
     

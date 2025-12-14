@@ -87,29 +87,47 @@ def load_tokenizer():
         # We need to download the model.tar.gz, extract it, and get tokenizer.pkl
         # But this is complex - let's try a simpler approach: store tokenizer separately
         
-        # For now, try to get from a known location
-        # Check if tokenizer was saved separately
-        tokenizer_key = "tokenizers/latest_tokenizer.pkl"
+        # Try to load tokenizer from JSON (version-independent)
+        tokenizer_key_json = "tokenizers/latest_tokenizer.json"
         try:
-            # Download to a temporary file
-            tmp_file_path = tempfile.mktemp(suffix='.pkl')
-            s3_client.download_file(MODELS_BUCKET, tokenizer_key, tmp_file_path)
+            # Download JSON file
+            tmp_file_path = tempfile.mktemp(suffix='.json')
+            s3_client.download_file(MODELS_BUCKET, tokenizer_key_json, tmp_file_path)
             
-            # Load tokenizer from file
-            with open(tmp_file_path, 'rb') as f:
-                _tokenizer = pickle.load(f)
+            # Load JSON and recreate Tokenizer
+            with open(tmp_file_path, 'r') as f:
+                tokenizer_data = json.load(f)
+            
+            # Recreate Tokenizer object
+            _tokenizer = Tokenizer(
+                num_words=tokenizer_data.get('num_words', 10000),
+                oov_token=tokenizer_data.get('oov_token', '<OOV>')
+            )
+            _tokenizer.word_index = tokenizer_data['word_index']
+            _tokenizer.document_count = tokenizer_data.get('document_count', 0)
             
             # Clean up temp file
             os.unlink(tmp_file_path)
             
             _tokenizer_loaded = True
-            log_info("inference", "Tokenizer loaded successfully from S3")
+            log_info("inference", "Tokenizer loaded successfully from JSON")
             return _tokenizer
         except Exception as e:
-            log_info("inference", f"Error loading tokenizer from {tokenizer_key}: {str(e)}")
-            # Try to extract from model.tar.gz
-            # This is more complex - for now, return None and we'll handle it
-            return None
+            log_info("inference", f"Error loading tokenizer JSON: {str(e)}")
+            # Fallback to pickle (for backward compatibility)
+            tokenizer_key_pkl = "tokenizers/latest_tokenizer.pkl"
+            try:
+                tmp_file_path = tempfile.mktemp(suffix='.pkl')
+                s3_client.download_file(MODELS_BUCKET, tokenizer_key_pkl, tmp_file_path)
+                with open(tmp_file_path, 'rb') as f:
+                    _tokenizer = pickle.load(f)
+                os.unlink(tmp_file_path)
+                _tokenizer_loaded = True
+                log_info("inference", "Tokenizer loaded from pickle (fallback)")
+                return _tokenizer
+            except Exception as e2:
+                log_info("inference", f"Error loading tokenizer pickle: {str(e2)}")
+                return None
             
     except Exception as e:
         log_info("inference", f"Error loading tokenizer: {e}")
