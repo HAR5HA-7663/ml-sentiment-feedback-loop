@@ -102,12 +102,37 @@ if __name__ == '__main__':
         verbose=1
     )
     
-    # Evaluate model
-    print("Evaluating model...")
+    # Get validation accuracy from training history
+    val_accuracy = history.history.get('val_accuracy', [])
+    if val_accuracy:
+        final_val_accuracy = val_accuracy[-1]
+        print(f"Validation accuracy: {final_val_accuracy:.4f}")
+    else:
+        final_val_accuracy = None
+        print("No validation accuracy available (no validation split)")
+    
+    # Evaluate model on test set
+    print("Evaluating model on test set...")
     test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=0)
     
     print(f"Test accuracy: {test_accuracy:.4f}")
     print(f"Test loss: {test_loss:.4f}")
+    
+    # Generate confusion matrix on test set
+    y_pred = model.predict(X_test, verbose=0)
+    y_pred_classes = np.argmax(y_pred, axis=1)
+    cm = confusion_matrix(y_test, y_pred_classes)
+    
+    print("\nConfusion Matrix (Test Dataset):")
+    print("Rows: Actual, Columns: Predicted")
+    print("Labels: [Positive, Negative, Neutral]")
+    print(cm)
+    print("\nConfusion Matrix (Formatted):")
+    label_names = ['Positive', 'Negative', 'Neutral']
+    print(f"{'':>12} {'Predicted':>30}")
+    print(f"{'Actual':>12} {'Positive':>10} {'Negative':>10} {'Neutral':>10}")
+    for i, label in enumerate(label_names):
+        print(f"{label:>12} {cm[i][0]:>10} {cm[i][1]:>10} {cm[i][2]:>10}")
     
     # Save model in TensorFlow SavedModel format
     print(f"Saving model to {args.model_dir}")
