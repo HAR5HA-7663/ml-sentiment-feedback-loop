@@ -76,7 +76,42 @@ def load_and_preprocess_data(data_dir):
     return X_train, X_test, y_train, y_test, tokenizer, class_weights
 
 
-def build_model():
+def focal_loss(gamma=2.0, alpha=None):
+    """Focal loss for handling class imbalance - focuses on hard examples
+    Works with sparse categorical labels (y_true is integer, not one-hot)
+    """
+    def focal_loss_fn(y_true, y_pred):
+        epsilon = keras.backend.epsilon()
+        y_pred = keras.backend.clip(y_pred, epsilon, 1.0 - epsilon)
+        
+        # Convert sparse labels to one-hot for focal loss calculation
+        y_true_one_hot = tf.one_hot(tf.cast(y_true, tf.int32), depth=3)
+        y_true_one_hot = tf.cast(y_true_one_hot, tf.float32)
+        
+        # Calculate cross entropy
+        ce = -y_true_one_hot * keras.backend.log(y_pred)
+        
+        # Calculate p_t (probability of true class)
+        p_t = tf.reduce_sum(y_pred * y_true_one_hot, axis=1, keepdims=True)
+        
+        # Calculate focal weight: (1 - p_t)^gamma
+        focal_weight = keras.backend.pow((1 - p_t), gamma)
+        
+        # Apply alpha weighting if provided (alpha is [weight_for_class_0, weight_for_class_1, weight_for_class_2])
+        if alpha is not None:
+            # Get alpha for each sample based on true class
+            alpha_t = tf.gather(alpha, tf.cast(y_true, tf.int32))
+            alpha_t = tf.expand_dims(alpha_t, axis=1)
+            focal_weight = alpha_t * focal_weight
+        
+        # Apply focal weight to cross entropy
+        ce_weighted = ce * focal_weight
+        
+        return tf.reduce_sum(ce_weighted, axis=1)
+    
+    return focal_loss_fn
+
+def build_model(use_focal_loss=True):
     """Build sentiment analysis model with overfitting prevention"""
     model = keras.Sequential([
         keras.layers.Embedding(VOCAB_SIZE, EMBEDDING_DIM, input_length=MAX_SEQUENCE_LENGTH),
@@ -90,9 +125,18 @@ def build_model():
     ])
     
     optimizer = keras.optimizers.Adam(learning_rate=0.001)
+    
+    # Use focal loss for extreme class imbalance, otherwise use weighted cross-entropy
+    if use_focal_loss:
+        # Alpha weights: [Positive, Negative, Neutral] - higher for minority classes
+        alpha = tf.constant([0.1, 0.6, 0.3], dtype=tf.float32)  # Low for Positive, high for Negative/Neutral
+        loss_fn = focal_loss(gamma=2.0, alpha=alpha)
+    else:
+        loss_fn = 'sparse_categorical_crossentropy'
+    
     model.compile(
         optimizer=optimizer,
-        loss='sparse_categorical_crossentropy',
+        loss=loss_fn,
         metrics=['accuracy']
     )
     
@@ -118,8 +162,8 @@ if __name__ == '__main__':
     X_train, X_test, y_train, y_test, tokenizer, class_weights = load_and_preprocess_data(args.train)
     
     # Build and train model
-    print("Building model...")
-    model = build_model()
+    print("Building model with focal loss for class imbalance...")
+    model = build_model(use_focal_loss=True)
     
     # Create proper train/val split with stratification
     from sklearn.model_selection import train_test_split
