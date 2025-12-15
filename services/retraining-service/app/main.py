@@ -13,6 +13,7 @@ import numpy as np
 import os
 import boto3
 from sklearn.metrics import confusion_matrix
+from sklearn.model_selection import train_test_split
 from app.logging_middleware import RequestLoggingMiddleware, log_info
 
 app = FastAPI()
@@ -107,16 +108,21 @@ def load_existing_tokenizer():
 
 
 def build_model():
+    """Build model with overfitting prevention"""
     model = keras.Sequential([
         keras.layers.Embedding(VOCAB_SIZE, EMBEDDING_DIM, input_length=MAX_SEQUENCE_LENGTH),
         keras.layers.GlobalAveragePooling1D(),
-        keras.layers.Dense(64, activation='relu'),
+        keras.layers.Dropout(0.3),
+        keras.layers.Dense(32, activation='relu', kernel_regularizer=keras.regularizers.l2(0.01)),
+        keras.layers.Dropout(0.5),
+        keras.layers.Dense(16, activation='relu', kernel_regularizer=keras.regularizers.l2(0.01)),
         keras.layers.Dropout(0.5),
         keras.layers.Dense(3, activation='softmax')
     ])
     
+    optimizer = keras.optimizers.Adam(learning_rate=0.001)
     model.compile(
-        optimizer='adam',
+        optimizer=optimizer,
         loss='sparse_categorical_crossentropy',
         metrics=['accuracy']
     )
@@ -158,22 +164,50 @@ async def retrain(request: Request):
     X = pad_sequences(sequences, maxlen=MAX_SEQUENCE_LENGTH)
     y = np.array(labels_numeric)
     
-    split_idx = int(len(X) * 0.8)
-    if split_idx == 0:
-        split_idx = len(X) - 1
+    # Proper train/val/test split
+    if len(X) < 20:
+        # Very small dataset - use simple split
+        split_idx = int(len(X) * 0.8)
+        if split_idx == 0:
+            split_idx = len(X) - 1
+        X_train, X_test = X[:split_idx], X[split_idx:]
+        y_train, y_test = y[:split_idx], y[split_idx:]
+        X_val, y_val = X_test, y_test
+    else:
+        # Proper stratified split
+        X_train, X_temp, y_train, y_temp = train_test_split(
+            X, y, test_size=0.3, random_state=42, stratify=y
+        )
+        X_val, X_test, y_val, y_test = train_test_split(
+            X_temp, y_temp, test_size=0.5, random_state=42, stratify=y_temp
+        )
     
-    X_train, X_test = X[:split_idx], X[split_idx:]
-    y_train, y_test = y[:split_idx], y[split_idx:]
-    
-    log_info(request_id, f"Training model on {len(X_train)} samples (validation: {len(X_test)} samples)")
+    log_info(request_id, f"Training: {len(X_train)}, Validation: {len(X_val)}, Test: {len(X_test)}")
     
     model = build_model()
     
+    # Callbacks for overfitting prevention
+    early_stopping = keras.callbacks.EarlyStopping(
+        monitor='val_loss',
+        patience=3,
+        restore_best_weights=True,
+        verbose=1
+    )
+    
+    reduce_lr = keras.callbacks.ReduceLROnPlateau(
+        monitor='val_loss',
+        factor=0.5,
+        patience=2,
+        min_lr=0.0001,
+        verbose=1
+    )
+    
     history = model.fit(
         X_train, y_train,
-        epochs=5,
+        epochs=10,
         batch_size=min(32, len(X_train)),
-        validation_split=0.2 if len(X_train) > 10 else 0.0,
+        validation_data=(X_val, y_val),
+        callbacks=[early_stopping, reduce_lr],
         verbose=1
     )
     

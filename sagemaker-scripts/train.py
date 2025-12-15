@@ -13,6 +13,7 @@ from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 import pickle
 from sklearn.metrics import confusion_matrix
+from sklearn.model_selection import train_test_split
 
 # Hyperparameters
 MAX_SEQUENCE_LENGTH = 200
@@ -53,17 +54,21 @@ def load_and_preprocess_data(data_dir):
 
 
 def build_model():
-    """Build sentiment analysis model"""
+    """Build sentiment analysis model with overfitting prevention"""
     model = keras.Sequential([
         keras.layers.Embedding(VOCAB_SIZE, EMBEDDING_DIM, input_length=MAX_SEQUENCE_LENGTH),
         keras.layers.GlobalAveragePooling1D(),
-        keras.layers.Dense(64, activation='relu'),
+        keras.layers.Dropout(0.3),
+        keras.layers.Dense(32, activation='relu', kernel_regularizer=keras.regularizers.l2(0.01)),
+        keras.layers.Dropout(0.5),
+        keras.layers.Dense(16, activation='relu', kernel_regularizer=keras.regularizers.l2(0.01)),
         keras.layers.Dropout(0.5),
         keras.layers.Dense(3, activation='softmax')
     ])
     
+    optimizer = keras.optimizers.Adam(learning_rate=0.001)
     model.compile(
-        optimizer='adam',
+        optimizer=optimizer,
         loss='sparse_categorical_crossentropy',
         metrics=['accuracy']
     )
@@ -93,21 +98,62 @@ if __name__ == '__main__':
     print("Building model...")
     model = build_model()
     
-    print("Training model...")
-    history = model.fit(
-        X_train, y_train,
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        validation_split=0.2,
+    # Create proper train/val split
+    from sklearn.model_selection import train_test_split
+    X_train_split, X_val, y_train_split, y_val = train_test_split(
+        X_train, y_train, test_size=0.2, random_state=42, stratify=y_train
+    )
+    
+    print(f"Training: {len(X_train_split)}, Validation: {len(X_val)}, Test: {len(X_test)}")
+    
+    # Callbacks for overfitting prevention
+    early_stopping = keras.callbacks.EarlyStopping(
+        monitor='val_loss',
+        patience=3,
+        restore_best_weights=True,
         verbose=1
     )
     
-    # Evaluate model
-    print("Evaluating model...")
+    reduce_lr = keras.callbacks.ReduceLROnPlateau(
+        monitor='val_loss',
+        factor=0.5,
+        patience=2,
+        min_lr=0.0001,
+        verbose=1
+    )
+    
+    print("Training model...")
+    history = model.fit(
+        X_train_split, y_train_split,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        validation_data=(X_val, y_val),
+        callbacks=[early_stopping, reduce_lr],
+        verbose=1
+    )
+    
+    # Get final validation accuracy
+    final_val_accuracy = None
+    if 'val_accuracy' in history.history and len(history.history['val_accuracy']) > 0:
+        final_val_accuracy = float(history.history['val_accuracy'][-1])
+        print(f"Final validation accuracy: {final_val_accuracy:.4f}")
+    
+    # Evaluate model on test set
+    print("Evaluating model on test set...")
     test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=0)
     
     print(f"Test accuracy: {test_accuracy:.4f}")
     print(f"Test loss: {test_loss:.4f}")
+    
+    # Generate confusion matrix
+    y_pred = model.predict(X_test, verbose=0)
+    y_pred_classes = np.argmax(y_pred, axis=1)
+    cm = confusion_matrix(y_test, y_pred_classes)
+    
+    print("\nConfusion Matrix:")
+    print(cm)
+    print(f"\nValidation Accuracy: {final_val_accuracy:.4f}")
+    print(f"Test Accuracy: {test_accuracy:.4f}")
     
     # Save model in TensorFlow SavedModel format
     print(f"Saving model to {args.model_dir}")
@@ -154,7 +200,8 @@ if __name__ == '__main__':
         'accuracy': float(test_accuracy),
         'loss': float(test_loss),
         'validation_accuracy': float(final_val_accuracy) if final_val_accuracy is not None else None,
-        'training_samples': len(X_train),
+        'training_samples': len(X_train_split),
+        'validation_samples': len(X_val),
         'test_samples': len(X_test),
         'confusion_matrix': cm.tolist()
     }
