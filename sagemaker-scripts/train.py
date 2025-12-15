@@ -35,36 +35,70 @@ def load_and_preprocess_data(data_dir):
     label_map = {'Positive': 0, 'Negative': 1, 'Neutral': 2}
     labels_numeric = [label_map.get(label, 2) for label in labels]
     
-    # Calculate class weights to handle severe imbalance (93.7% Positive)
+    # Handle severe class imbalance (93.7% Positive) with undersampling
     from collections import Counter
+    from sklearn.utils import resample
+    
     class_counts = Counter(labels_numeric)
-    total_samples = len(labels_numeric)
-    num_classes = len(class_counts)
+    print(f"Original class distribution: {dict(class_counts)}")
     
-    # Use stronger class weights: square the inverse frequency for extreme imbalance
-    # This gives much higher weight to minority classes
+    # Find minority class size (smallest class)
+    min_class_size = min(class_counts.values())
+    print(f"Minority class size: {min_class_size}")
+    
+    # Undersample majority class to balance dataset
+    # Strategy: Keep all minority samples, undersample Positive to 3x minority size
+    target_size = min(min_class_size * 3, class_counts[0])  # 3x minority, but not more than available
+    
+    # Separate by class
+    texts_array = np.array(texts)
+    labels_array = np.array(labels_numeric)
+    
+    balanced_texts = []
+    balanced_labels = []
+    
+    for class_idx in range(3):
+        class_mask = labels_array == class_idx
+        class_texts = texts_array[class_mask].tolist()
+        class_labels = labels_array[class_mask].tolist()
+        
+        if class_idx == 0:  # Positive - undersample
+            if len(class_texts) > target_size:
+                # Randomly sample target_size samples
+                indices = np.random.choice(len(class_texts), size=target_size, replace=False)
+                class_texts = [class_texts[i] for i in indices]
+                class_labels = [class_labels[i] for i in indices]
+                print(f"Undersampled Positive: {len(class_texts)} samples (from {class_counts[0]})")
+        else:  # Negative and Neutral - keep all
+            print(f"Keeping all {['Positive', 'Negative', 'Neutral'][class_idx]}: {len(class_texts)} samples")
+        
+        balanced_texts.extend(class_texts)
+        balanced_labels.extend(class_labels)
+    
+    # Shuffle balanced dataset
+    indices = np.random.permutation(len(balanced_texts))
+    balanced_texts = [balanced_texts[i] for i in indices]
+    balanced_labels = [balanced_labels[i] for i in indices]
+    
+    balanced_counts = Counter(balanced_labels)
+    print(f"Balanced class distribution: {dict(balanced_counts)}")
+    
+    # Calculate class weights for balanced dataset
+    total_samples = len(balanced_labels)
+    num_classes = len(balanced_counts)
     class_weights = {}
-    for class_idx, count in class_counts.items():
-        # Standard: total_samples / (num_classes * count)
-        # Stronger: (total_samples / count) ** 1.5 for extreme imbalance
-        base_weight = total_samples / (num_classes * count)
-        # Square root of inverse frequency for more aggressive weighting
-        class_weights[class_idx] = (total_samples / count) ** 1.5
+    for class_idx, count in balanced_counts.items():
+        class_weights[class_idx] = total_samples / (num_classes * count)
     
-    # Normalize weights to prevent training instability
-    max_weight = max(class_weights.values())
-    class_weights = {k: v / max_weight * 10 for k, v in class_weights.items()}
-    
-    print(f"Class distribution: {dict(class_counts)}")
-    print(f"Class weights (normalized): {class_weights}")
+    print(f"Class weights: {class_weights}")
     
     # Tokenize texts
     tokenizer = Tokenizer(num_words=VOCAB_SIZE, oov_token="<OOV>")
-    tokenizer.fit_on_texts(texts)
+    tokenizer.fit_on_texts(balanced_texts)
     
-    sequences = tokenizer.texts_to_sequences(texts)
+    sequences = tokenizer.texts_to_sequences(balanced_texts)
     X = pad_sequences(sequences, maxlen=MAX_SEQUENCE_LENGTH)
-    y = np.array(labels_numeric)
+    y = np.array(balanced_labels)
     
     # Split data
     split_idx = int(len(X) * 0.8)
