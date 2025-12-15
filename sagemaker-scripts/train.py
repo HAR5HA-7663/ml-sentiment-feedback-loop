@@ -47,8 +47,8 @@ def load_and_preprocess_data(data_dir):
     print(f"Minority class size: {min_class_size}")
     
     # Undersample majority class to balance dataset
-    # Strategy: Keep all minority samples, undersample Positive to 3x minority size
-    target_size = min(min_class_size * 3, class_counts[0])  # 3x minority, but not more than available
+    # Strategy: Perfect 1:1 balance - undersample Positive to match minority class size exactly
+    target_size = min_class_size  # Match minority class size exactly for perfect balance
     
     # Separate by class
     texts_array = np.array(texts)
