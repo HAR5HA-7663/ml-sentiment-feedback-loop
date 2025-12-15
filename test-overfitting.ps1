@@ -1,6 +1,6 @@
 # Test for Overfitting - Use examples from dataset
 $ALB_URL = "http://ml-sentiment-alb-850542821.us-east-2.elb.amazonaws.com"
-$JOB_NAME = "ml-sentiment-training-20251215-143539"
+$JOB_NAME = "ml-sentiment-training-20251215-174242"
 
 Write-Host "================================================" -ForegroundColor Cyan
 Write-Host "  Overfitting Test Script" -ForegroundColor Cyan

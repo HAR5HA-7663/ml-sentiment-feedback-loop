@@ -3,6 +3,7 @@ import os
 import boto3
 import time
 import asyncio
+import threading
 from datetime import datetime
 from app.logging_middleware import RequestLoggingMiddleware, log_info
 
@@ -22,9 +23,27 @@ s3_client = boto3.client('s3', region_name=AWS_REGION)
 
 
 def monitor_and_deploy_sync(job_name: str):
-    """Background task that monitors training and auto-deploys when complete (sync version for BackgroundTasks)"""
-    import asyncio
-    asyncio.run(monitor_and_deploy(job_name))
+    """Background task that monitors training and auto-deploys when complete (sync version for BackgroundTasks)
+    
+    Uses threading to run async function in background, more reliable than asyncio.run() in FastAPI BackgroundTasks
+    """
+    def run_async():
+        try:
+            # Create new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(monitor_and_deploy(job_name))
+        except Exception as e:
+            log_info(f"auto-deploy-{job_name}", f"Error in background task: {str(e)}")
+            import traceback
+            log_info(f"auto-deploy-{job_name}", f"Traceback: {traceback.format_exc()}")
+        finally:
+            loop.close()
+    
+    # Run in daemon thread so it doesn't block shutdown
+    thread = threading.Thread(target=run_async, daemon=True, name=f"auto-deploy-{job_name}")
+    thread.start()
+    log_info(f"auto-deploy-{job_name}", f"Background thread started for monitoring {job_name}")
 
 async def monitor_and_deploy(job_name: str):
     """Background task that monitors training and auto-deploys when complete"""
@@ -223,7 +242,8 @@ async def bootstrap(request: Request, background_tasks: BackgroundTasks, auto_de
         }
         
         if auto_deploy:
-            background_tasks.add_task(monitor_and_deploy_sync, training_job_name)
+            # Start background monitoring thread immediately (more reliable than BackgroundTasks)
+            monitor_and_deploy_sync(training_job_name)
             result["auto_deploy"] = True
             result["note"] = "Auto-deployment enabled. Model will be deployed automatically when training completes."
         else:
