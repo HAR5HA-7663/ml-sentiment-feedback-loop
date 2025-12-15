@@ -21,6 +21,11 @@ sagemaker_client = boto3.client('sagemaker', region_name=AWS_REGION)
 s3_client = boto3.client('s3', region_name=AWS_REGION)
 
 
+def monitor_and_deploy_sync(job_name: str):
+    """Background task that monitors training and auto-deploys when complete (sync version for BackgroundTasks)"""
+    import asyncio
+    asyncio.run(monitor_and_deploy(job_name))
+
 async def monitor_and_deploy(job_name: str):
     """Background task that monitors training and auto-deploys when complete"""
     request_id = f"auto-deploy-{job_name}"
@@ -83,13 +88,17 @@ async def monitor_and_deploy(job_name: str):
                         EndpointConfigName=endpoint_config_name
                     )
                     action = "updated"
-                except sagemaker_client.exceptions.ClientError:
-                    log_info(request_id, f"Creating new endpoint: {endpoint_name}")
-                    sagemaker_client.create_endpoint(
-                        EndpointName=endpoint_name,
-                        EndpointConfigName=endpoint_config_name
-                    )
-                    action = "created"
+                except sagemaker_client.exceptions.ClientError as e:
+                    if 'Could not find endpoint' in str(e) or 'does not exist' in str(e):
+                        log_info(request_id, f"Creating new endpoint: {endpoint_name}")
+                        sagemaker_client.create_endpoint(
+                            EndpointName=endpoint_name,
+                            EndpointConfigName=endpoint_config_name
+                        )
+                        action = "created"
+                    else:
+                        log_info(request_id, f"Error updating endpoint: {str(e)}")
+                        raise
                 
                 log_info(request_id, f"Auto-deployment complete: endpoint {action}")
                 return
@@ -100,6 +109,8 @@ async def monitor_and_deploy(job_name: str):
                 
         except Exception as e:
             log_info(request_id, f"Error checking status: {str(e)}")
+            import traceback
+            log_info(request_id, f"Traceback: {traceback.format_exc()}")
         
         await asyncio.sleep(check_interval)
         elapsed += check_interval
@@ -212,7 +223,7 @@ async def bootstrap(request: Request, background_tasks: BackgroundTasks, auto_de
         }
         
         if auto_deploy:
-            background_tasks.add_task(monitor_and_deploy, training_job_name)
+            background_tasks.add_task(monitor_and_deploy_sync, training_job_name)
             result["auto_deploy"] = True
             result["note"] = "Auto-deployment enabled. Model will be deployed automatically when training completes."
         else:

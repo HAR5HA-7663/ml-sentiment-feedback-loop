@@ -35,6 +35,20 @@ def load_and_preprocess_data(data_dir):
     label_map = {'Positive': 0, 'Negative': 1, 'Neutral': 2}
     labels_numeric = [label_map.get(label, 2) for label in labels]
     
+    # Calculate class weights to handle imbalance
+    from collections import Counter
+    class_counts = Counter(labels_numeric)
+    total_samples = len(labels_numeric)
+    num_classes = len(class_counts)
+    
+    # Calculate class weights: n_samples / (n_classes * count_per_class)
+    class_weights = {}
+    for class_idx, count in class_counts.items():
+        class_weights[class_idx] = total_samples / (num_classes * count)
+    
+    print(f"Class distribution: {dict(class_counts)}")
+    print(f"Class weights: {class_weights}")
+    
     # Tokenize texts
     tokenizer = Tokenizer(num_words=VOCAB_SIZE, oov_token="<OOV>")
     tokenizer.fit_on_texts(texts)
@@ -50,7 +64,7 @@ def load_and_preprocess_data(data_dir):
     
     print(f"Training samples: {len(X_train)}, Test samples: {len(X_test)}")
     
-    return X_train, X_test, y_train, y_test, tokenizer
+    return X_train, X_test, y_train, y_test, tokenizer, class_weights
 
 
 def build_model():
@@ -92,13 +106,13 @@ if __name__ == '__main__':
     print(f"Train data dir: {args.train}")
     
     # Load and preprocess data
-    X_train, X_test, y_train, y_test, tokenizer = load_and_preprocess_data(args.train)
+    X_train, X_test, y_train, y_test, tokenizer, class_weights = load_and_preprocess_data(args.train)
     
     # Build and train model
     print("Building model...")
     model = build_model()
     
-    # Create proper train/val split
+    # Create proper train/val split with stratification
     from sklearn.model_selection import train_test_split
     X_train_split, X_val, y_train_split, y_val = train_test_split(
         X_train, y_train, test_size=0.2, random_state=42, stratify=y_train
@@ -109,7 +123,7 @@ if __name__ == '__main__':
     # Callbacks for overfitting prevention
     early_stopping = keras.callbacks.EarlyStopping(
         monitor='val_loss',
-        patience=3,
+        patience=5,
         restore_best_weights=True,
         verbose=1
     )
@@ -117,17 +131,18 @@ if __name__ == '__main__':
     reduce_lr = keras.callbacks.ReduceLROnPlateau(
         monitor='val_loss',
         factor=0.5,
-        patience=2,
+        patience=3,
         min_lr=0.0001,
         verbose=1
     )
     
-    print("Training model...")
+    print("Training model with class weights...")
     history = model.fit(
         X_train_split, y_train_split,
         epochs=args.epochs,
         batch_size=args.batch_size,
         validation_data=(X_val, y_val),
+        class_weight=class_weights,
         callbacks=[early_stopping, reduce_lr],
         verbose=1
     )

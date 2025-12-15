@@ -14,6 +14,7 @@ import os
 import boto3
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
+from collections import Counter
 from app.logging_middleware import RequestLoggingMiddleware, log_info
 
 app = FastAPI()
@@ -164,6 +165,19 @@ async def retrain(request: Request):
     X = pad_sequences(sequences, maxlen=MAX_SEQUENCE_LENGTH)
     y = np.array(labels_numeric)
     
+    # Calculate class weights for imbalanced data
+    from collections import Counter
+    class_counts = Counter(y.tolist())
+    total_samples = len(y)
+    num_classes = len(class_counts)
+    
+    class_weights = {}
+    for class_idx, count in class_counts.items():
+        class_weights[class_idx] = total_samples / (num_classes * count)
+    
+    log_info(request_id, f"Class distribution: {dict(class_counts)}")
+    log_info(request_id, f"Class weights: {class_weights}")
+    
     # Proper train/val/test split
     if len(X) < 20:
         # Very small dataset - use simple split
@@ -189,7 +203,7 @@ async def retrain(request: Request):
     # Callbacks for overfitting prevention
     early_stopping = keras.callbacks.EarlyStopping(
         monitor='val_loss',
-        patience=3,
+        patience=5,
         restore_best_weights=True,
         verbose=1
     )
@@ -197,7 +211,7 @@ async def retrain(request: Request):
     reduce_lr = keras.callbacks.ReduceLROnPlateau(
         monitor='val_loss',
         factor=0.5,
-        patience=2,
+        patience=3,
         min_lr=0.0001,
         verbose=1
     )
@@ -207,6 +221,7 @@ async def retrain(request: Request):
         epochs=10,
         batch_size=min(32, len(X_train)),
         validation_data=(X_val, y_val),
+        class_weight=class_weights,
         callbacks=[early_stopping, reduce_lr],
         verbose=1
     )
