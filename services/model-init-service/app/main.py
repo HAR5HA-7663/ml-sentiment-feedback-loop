@@ -41,9 +41,15 @@ def monitor_and_deploy_sync(job_name: str):
             loop.close()
     
     # Run in daemon thread so it doesn't block shutdown
-    thread = threading.Thread(target=run_async, daemon=True, name=f"auto-deploy-{job_name}")
-    thread.start()
-    log_info(f"auto-deploy-{job_name}", f"Background thread started for monitoring {job_name}")
+    try:
+        thread = threading.Thread(target=run_async, daemon=True, name=f"auto-deploy-{job_name}")
+        thread.start()
+        log_info(f"auto-deploy-{job_name}", f"Background thread started for monitoring {job_name} (thread ID: {thread.ident})")
+    except Exception as e:
+        log_info(f"auto-deploy-{job_name}", f"Failed to start thread: {str(e)}")
+        import traceback
+        log_info(f"auto-deploy-{job_name}", f"Traceback: {traceback.format_exc()}")
+        raise
 
 async def monitor_and_deploy(job_name: str):
     """Background task that monitors training and auto-deploys when complete"""
@@ -242,10 +248,19 @@ async def bootstrap(request: Request, background_tasks: BackgroundTasks, auto_de
         }
         
         if auto_deploy:
-            # Start background monitoring thread immediately (more reliable than BackgroundTasks)
-            monitor_and_deploy_sync(training_job_name)
-            result["auto_deploy"] = True
-            result["note"] = "Auto-deployment enabled. Model will be deployed automatically when training completes."
+            log_info(request_id, f"Auto-deploy enabled, starting background monitoring thread for {training_job_name}")
+            try:
+                # Start background monitoring thread immediately (more reliable than BackgroundTasks)
+                monitor_and_deploy_sync(training_job_name)
+                log_info(request_id, f"Background thread started successfully for {training_job_name}")
+                result["auto_deploy"] = True
+                result["note"] = "Auto-deployment enabled. Model will be deployed automatically when training completes."
+            except Exception as e:
+                log_info(request_id, f"Error starting auto-deploy thread: {str(e)}")
+                import traceback
+                log_info(request_id, f"Traceback: {traceback.format_exc()}")
+                result["auto_deploy"] = False
+                result["note"] = f"Auto-deployment failed to start: {str(e)}. Please deploy manually."
         else:
             result["note"] = "Use /status endpoint to check progress"
         
