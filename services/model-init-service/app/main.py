@@ -1,7 +1,8 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, BackgroundTasks
 import os
 import boto3
 import time
+import asyncio
 from datetime import datetime
 from app.logging_middleware import RequestLoggingMiddleware, log_info
 
@@ -20,6 +21,92 @@ sagemaker_client = boto3.client('sagemaker', region_name=AWS_REGION)
 s3_client = boto3.client('s3', region_name=AWS_REGION)
 
 
+async def monitor_and_deploy(job_name: str):
+    """Background task that monitors training and auto-deploys when complete"""
+    request_id = f"auto-deploy-{job_name}"
+    max_wait_time = 3600
+    check_interval = 60
+    elapsed = 0
+    
+    log_info(request_id, f"Starting auto-deployment monitor for {job_name}")
+    
+    while elapsed < max_wait_time:
+        try:
+            response = sagemaker_client.describe_training_job(TrainingJobName=job_name)
+            status = response['TrainingJobStatus']
+            
+            if status == 'Completed':
+                log_info(request_id, f"Training completed. Auto-deploying {job_name}")
+                
+                model_data = response['ModelArtifacts']['S3ModelArtifacts']
+                timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+                model_name = f"{PROJECT_NAME}-model-{timestamp}"
+                
+                log_info(request_id, f"Creating SageMaker model: {model_name}")
+                sagemaker_client.create_model(
+                    ModelName=model_name,
+                    PrimaryContainer={
+                        'Image': f'763104351884.dkr.ecr.{AWS_REGION}.amazonaws.com/tensorflow-training:2.11-cpu-py39',
+                        'ModelDataUrl': model_data,
+                        'Mode': 'SingleModel',
+                        'Environment': {
+                            'SAGEMAKER_PROGRAM': 'inference.py',
+                            'SAGEMAKER_SUBMIT_DIRECTORY': f's3://{MODELS_BUCKET}/sagemaker-scripts/sourcedir.tar.gz',
+                            'SAGEMAKER_REGION': AWS_REGION,
+                            'SAGEMAKER_CONTAINER_LOG_LEVEL': '20'
+                        }
+                    },
+                    ExecutionRoleArn=SAGEMAKER_ROLE_ARN
+                )
+                
+                endpoint_config_name = f"{PROJECT_NAME}-endpoint-config-{timestamp}"
+                log_info(request_id, f"Creating endpoint configuration: {endpoint_config_name}")
+                
+                sagemaker_client.create_endpoint_config(
+                    EndpointConfigName=endpoint_config_name,
+                    ProductionVariants=[
+                        {
+                            'VariantName': 'AllTraffic',
+                            'ModelName': model_name,
+                            'InstanceType': 'ml.t2.medium',
+                            'InitialInstanceCount': 1,
+                            'InitialVariantWeight': 1.0
+                        }
+                    ]
+                )
+                
+                endpoint_name = f"{PROJECT_NAME}-endpoint"
+                try:
+                    log_info(request_id, f"Updating endpoint: {endpoint_name}")
+                    sagemaker_client.update_endpoint(
+                        EndpointName=endpoint_name,
+                        EndpointConfigName=endpoint_config_name
+                    )
+                    action = "updated"
+                except sagemaker_client.exceptions.ClientError:
+                    log_info(request_id, f"Creating new endpoint: {endpoint_name}")
+                    sagemaker_client.create_endpoint(
+                        EndpointName=endpoint_name,
+                        EndpointConfigName=endpoint_config_name
+                    )
+                    action = "created"
+                
+                log_info(request_id, f"Auto-deployment complete: endpoint {action}")
+                return
+                
+            elif status == 'Failed':
+                log_info(request_id, f"Training failed: {response.get('FailureReason', 'Unknown')}")
+                return
+                
+        except Exception as e:
+            log_info(request_id, f"Error checking status: {str(e)}")
+        
+        await asyncio.sleep(check_interval)
+        elapsed += check_interval
+    
+    log_info(request_id, f"Auto-deployment monitor timed out after {max_wait_time}s")
+
+
 @app.get("/health")
 async def health():
     return {
@@ -31,9 +118,11 @@ async def health():
 
 
 @app.post("/bootstrap")
-async def bootstrap(request: Request):
+async def bootstrap(request: Request, background_tasks: BackgroundTasks, auto_deploy: bool = False):
     """
     Bootstrap initial model by triggering SageMaker training job
+    Query params:
+    - auto_deploy: If True, automatically deploys model when training completes
     """
     request_id = getattr(request.state, "request_id", "unknown")
     
@@ -115,13 +204,21 @@ async def bootstrap(request: Request):
         log_info(request_id, f"Training job created: {training_job_name}")
         log_info(request_id, "Training will take approximately 15-20 minutes")
         
-        return {
+        result = {
             "message": "SageMaker training job started",
             "training_job_name": training_job_name,
             "status": "InProgress",
-            "estimated_time": "15-20 minutes",
-            "note": "Use /status endpoint to check progress"
+            "estimated_time": "15-20 minutes"
         }
+        
+        if auto_deploy:
+            background_tasks.add_task(monitor_and_deploy, training_job_name)
+            result["auto_deploy"] = True
+            result["note"] = "Auto-deployment enabled. Model will be deployed automatically when training completes."
+        else:
+            result["note"] = "Use /status endpoint to check progress"
+        
+        return result
     
     except Exception as e:
         log_info(request_id, f"Error: {str(e)}")
