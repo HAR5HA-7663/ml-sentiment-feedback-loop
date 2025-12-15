@@ -165,18 +165,25 @@ async def retrain(request: Request):
     X = pad_sequences(sequences, maxlen=MAX_SEQUENCE_LENGTH)
     y = np.array(labels_numeric)
     
-    # Calculate class weights for imbalanced data
+    # Calculate class weights for imbalanced data (stronger weights for extreme imbalance)
     from collections import Counter
     class_counts = Counter(y.tolist())
     total_samples = len(y)
     num_classes = len(class_counts)
     
+    # Use stronger class weights for extreme imbalance
     class_weights = {}
     for class_idx, count in class_counts.items():
-        class_weights[class_idx] = total_samples / (num_classes * count)
+        # Stronger weighting: (total_samples / count) ** 1.5
+        base_weight = (total_samples / count) ** 1.5
+        class_weights[class_idx] = base_weight
+    
+    # Normalize weights
+    max_weight = max(class_weights.values())
+    class_weights = {k: v / max_weight * 10 for k, v in class_weights.items()}
     
     log_info(request_id, f"Class distribution: {dict(class_counts)}")
-    log_info(request_id, f"Class weights: {class_weights}")
+    log_info(request_id, f"Class weights (normalized): {class_weights}")
     
     # Proper train/val/test split
     if len(X) < 20:

@@ -35,19 +35,28 @@ def load_and_preprocess_data(data_dir):
     label_map = {'Positive': 0, 'Negative': 1, 'Neutral': 2}
     labels_numeric = [label_map.get(label, 2) for label in labels]
     
-    # Calculate class weights to handle imbalance
+    # Calculate class weights to handle severe imbalance (93.7% Positive)
     from collections import Counter
     class_counts = Counter(labels_numeric)
     total_samples = len(labels_numeric)
     num_classes = len(class_counts)
     
-    # Calculate class weights: n_samples / (n_classes * count_per_class)
+    # Use stronger class weights: square the inverse frequency for extreme imbalance
+    # This gives much higher weight to minority classes
     class_weights = {}
     for class_idx, count in class_counts.items():
-        class_weights[class_idx] = total_samples / (num_classes * count)
+        # Standard: total_samples / (num_classes * count)
+        # Stronger: (total_samples / count) ** 1.5 for extreme imbalance
+        base_weight = total_samples / (num_classes * count)
+        # Square root of inverse frequency for more aggressive weighting
+        class_weights[class_idx] = (total_samples / count) ** 1.5
+    
+    # Normalize weights to prevent training instability
+    max_weight = max(class_weights.values())
+    class_weights = {k: v / max_weight * 10 for k, v in class_weights.items()}
     
     print(f"Class distribution: {dict(class_counts)}")
-    print(f"Class weights: {class_weights}")
+    print(f"Class weights (normalized): {class_weights}")
     
     # Tokenize texts
     tokenizer = Tokenizer(num_words=VOCAB_SIZE, oov_token="<OOV>")
