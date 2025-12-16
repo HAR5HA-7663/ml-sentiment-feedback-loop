@@ -39,6 +39,9 @@ def load_and_preprocess_data(data_dir):
     from collections import Counter
     from sklearn.utils import resample
     
+    # Fixed seed for reproducible undersampling
+    np.random.seed(42)
+    
     class_counts = Counter(labels_numeric)
     print(f"Original class distribution: {dict(class_counts)}")
     
@@ -163,7 +166,7 @@ def build_model(use_focal_loss=True):
     # Use focal loss for extreme class imbalance, otherwise use weighted cross-entropy
     if use_focal_loss:
         # Alpha weights: [Positive, Negative, Neutral] - higher for minority classes
-        alpha = tf.constant([0.1, 0.6, 0.3], dtype=tf.float32)  # Low for Positive, high for Negative/Neutral
+        alpha = tf.constant([0.05, 0.7, 0.25], dtype=tf.float32)  # Even lower for Positive, higher for Negative/Neutral
         loss_fn = focal_loss(gamma=2.0, alpha=alpha)
     else:
         loss_fn = 'sparse_categorical_crossentropy'
@@ -183,7 +186,7 @@ if __name__ == '__main__':
     # SageMaker specific arguments
     parser.add_argument('--model-dir', type=str, default=os.environ.get('SM_MODEL_DIR'))
     parser.add_argument('--train', type=str, default=os.environ.get('SM_CHANNEL_TRAIN'))
-    parser.add_argument('--epochs', type=int, default=5)
+    parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--batch-size', type=int, default=32)
     
     args, _ = parser.parse_known_args()
@@ -223,13 +226,13 @@ if __name__ == '__main__':
         verbose=1
     )
     
-    print("Training model with class weights...")
+    print("Training model (dataset already balanced, no class weights needed)...")
     history = model.fit(
         X_train_split, y_train_split,
         epochs=args.epochs,
         batch_size=args.batch_size,
         validation_data=(X_val, y_val),
-        class_weight=class_weights,
+        # class_weight=class_weights,  # Removed - dataset already balanced
         callbacks=[early_stopping, reduce_lr],
         verbose=1
     )

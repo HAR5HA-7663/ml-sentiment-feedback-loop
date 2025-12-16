@@ -80,7 +80,7 @@ async def monitor_and_deploy(job_name: str):
                         'ModelDataUrl': model_data,
                         'Mode': 'SingleModel',
                         'Environment': {
-                            'SAGEMAKER_PROGRAM': 'inference.py',
+                            'SAGEMAKER_PROGRAM': 'inference_hf_tf.py',
                             'SAGEMAKER_SUBMIT_DIRECTORY': f's3://{MODELS_BUCKET}/sagemaker-scripts/sourcedir.tar.gz',
                             'SAGEMAKER_REGION': AWS_REGION,
                             'SAGEMAKER_CONTAINER_LOG_LEVEL': '20'
@@ -218,9 +218,10 @@ async def bootstrap(request: Request, background_tasks: BackgroundTasks, auto_de
                 'MaxRuntimeInSeconds': 3600
             },
             'HyperParameters': {
-                'epochs': '5',
-                'batch-size': '32',
-                'sagemaker_program': 'train.py',
+                'epochs': '3',
+                'batch-size': '16',
+                'learning-rate': '2e-5',
+                'sagemaker_program': 'train_hf_tf.py',
                 'sagemaker_submit_directory': f's3://{MODELS_BUCKET}/sagemaker-scripts/sourcedir.tar.gz',
                 'sagemaker_region': AWS_REGION
             },
@@ -330,7 +331,7 @@ async def deploy_model(job_name: str, request: Request):
                 'ModelDataUrl': model_data,
                 'Mode': 'SingleModel',
                 'Environment': {
-                    'SAGEMAKER_PROGRAM': 'inference.py',
+                    'SAGEMAKER_PROGRAM': 'inference_hf_tf.py',
                     'SAGEMAKER_SUBMIT_DIRECTORY': f's3://{MODELS_BUCKET}/sagemaker-scripts/sourcedir.tar.gz',
                     'SAGEMAKER_REGION': AWS_REGION,
                     'SAGEMAKER_CONTAINER_LOG_LEVEL': '20'
