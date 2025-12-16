@@ -1,318 +1,111 @@
 """
-SageMaker Training Script for Sentiment Analysis
-This script is executed by SageMaker Training Job
+SageMaker Training Script for Pre-trained Product Review Sentiment Analyzer
+Downloads the pre-trained model from HuggingFace and saves it for SageMaker deployment
+Model: eakashyap/product-review-sentiment-analyzer (DistilBERT fine-tuned on Yelp reviews)
+Uses PyTorch for compatibility with SageMaker HuggingFace containers
 """
 import os
 import json
 import argparse
-import pandas as pd
+import torch
 import numpy as np
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-import pickle
-from sklearn.metrics import confusion_matrix
-from sklearn.model_selection import train_test_split
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import warnings
+warnings.filterwarnings('ignore')
 
-# Hyperparameters
-MAX_SEQUENCE_LENGTH = 200
-VOCAB_SIZE = 10000
-EMBEDDING_DIM = 128
+# Pre-trained model from HuggingFace
+# Using a well-established sentiment model that's widely used
+MODEL_NAME = "cardiffnlp/twitter-roberta-base-sentiment-latest"
 
 
-def load_and_preprocess_data(data_dir):
-    """Load and preprocess training data"""
-    print(f"Loading data from {data_dir}")
-    
-    train_file = os.path.join(data_dir, 'train_data.csv')
-    df = pd.read_csv(train_file)
-    
-    texts = df['reviews.text'].fillna('').astype(str).tolist()
-    labels = df['sentiment'].fillna('Neutral').tolist()
-    
-    # Map labels to integers
-    label_map = {'Positive': 0, 'Negative': 1, 'Neutral': 2}
-    labels_numeric = [label_map.get(label, 2) for label in labels]
-    
-    # Handle severe class imbalance (93.7% Positive) with undersampling
-    from collections import Counter
-    from sklearn.utils import resample
-    
-    # Fixed seed for reproducible undersampling
-    np.random.seed(42)
-    
-    class_counts = Counter(labels_numeric)
-    print(f"Original class distribution: {dict(class_counts)}")
-    
-    # Find minority class size (smallest class)
-    min_class_size = min(class_counts.values())
-    print(f"Minority class size: {min_class_size}")
-    
-    # Undersample majority class to balance dataset
-    # Strategy: Perfect 1:1 balance - undersample Positive to match minority class size exactly
-    target_size = min_class_size  # Match minority class size exactly for perfect balance
-    
-    # Separate by class
-    texts_array = np.array(texts)
-    labels_array = np.array(labels_numeric)
-    
-    balanced_texts = []
-    balanced_labels = []
-    
-    for class_idx in range(3):
-        class_mask = labels_array == class_idx
-        class_texts = texts_array[class_mask].tolist()
-        class_labels = labels_array[class_mask].tolist()
-        
-        if class_idx == 0:  # Positive - undersample
-            if len(class_texts) > target_size:
-                # Randomly sample target_size samples
-                indices = np.random.choice(len(class_texts), size=target_size, replace=False)
-                class_texts = [class_texts[i] for i in indices]
-                class_labels = [class_labels[i] for i in indices]
-                print(f"Undersampled Positive: {len(class_texts)} samples (from {class_counts[0]})")
-        else:  # Negative and Neutral - keep all
-            print(f"Keeping all {['Positive', 'Negative', 'Neutral'][class_idx]}: {len(class_texts)} samples")
-        
-        balanced_texts.extend(class_texts)
-        balanced_labels.extend(class_labels)
-    
-    # Shuffle balanced dataset
-    indices = np.random.permutation(len(balanced_texts))
-    balanced_texts = [balanced_texts[i] for i in indices]
-    balanced_labels = [balanced_labels[i] for i in indices]
-    
-    balanced_counts = Counter(balanced_labels)
-    print(f"Balanced class distribution: {dict(balanced_counts)}")
-    
-    # Calculate class weights for balanced dataset
-    total_samples = len(balanced_labels)
-    num_classes = len(balanced_counts)
-    class_weights = {}
-    for class_idx, count in balanced_counts.items():
-        class_weights[class_idx] = total_samples / (num_classes * count)
-    
-    print(f"Class weights: {class_weights}")
-    
-    # Tokenize texts
-    tokenizer = Tokenizer(num_words=VOCAB_SIZE, oov_token="<OOV>")
-    tokenizer.fit_on_texts(balanced_texts)
-    
-    sequences = tokenizer.texts_to_sequences(balanced_texts)
-    X = pad_sequences(sequences, maxlen=MAX_SEQUENCE_LENGTH)
-    y = np.array(balanced_labels)
-    
-    # Split data
-    split_idx = int(len(X) * 0.8)
-    X_train, X_test = X[:split_idx], X[split_idx:]
-    y_train, y_test = y[:split_idx], y[split_idx:]
-    
-    print(f"Training samples: {len(X_train)}, Test samples: {len(X_test)}")
-    
-    return X_train, X_test, y_train, y_test, tokenizer, class_weights
-
-
-def focal_loss(gamma=2.0, alpha=None):
-    """Focal loss for handling class imbalance - focuses on hard examples
-    Works with sparse categorical labels (y_true is integer, not one-hot)
+def verify_label_mapping(model, tokenizer, device):
     """
-    def focal_loss_fn(y_true, y_pred):
-        epsilon = keras.backend.epsilon()
-        y_pred = keras.backend.clip(y_pred, epsilon, 1.0 - epsilon)
-        
-        # Convert sparse labels to one-hot for focal loss calculation
-        y_true_one_hot = tf.one_hot(tf.cast(y_true, tf.int32), depth=3)
-        y_true_one_hot = tf.cast(y_true_one_hot, tf.float32)
-        
-        # Calculate cross entropy
-        ce = -y_true_one_hot * keras.backend.log(y_pred)
-        
-        # Calculate p_t (probability of true class)
-        p_t = tf.reduce_sum(y_pred * y_true_one_hot, axis=1, keepdims=True)
-        
-        # Calculate focal weight: (1 - p_t)^gamma
-        focal_weight = keras.backend.pow((1 - p_t), gamma)
-        
-        # Apply alpha weighting if provided (alpha is [weight_for_class_0, weight_for_class_1, weight_for_class_2])
-        if alpha is not None:
-            # Get alpha for each sample based on true class
-            alpha_t = tf.gather(alpha, tf.cast(y_true, tf.int32))
-            alpha_t = tf.expand_dims(alpha_t, axis=1)
-            focal_weight = alpha_t * focal_weight
-        
-        # Apply focal weight to cross entropy
-        ce_weighted = ce * focal_weight
-        
-        return tf.reduce_sum(ce_weighted, axis=1)
-    
-    return focal_loss_fn
+    Verify the label mapping of the pre-trained model
+    """
+    test_samples = [
+        "This product is amazing! I love it!",
+        "Terrible product, waste of money!",
+        "It's okay, nothing special."
+    ]
 
-def build_model(use_focal_loss=True):
-    """Build sentiment analysis model with overfitting prevention"""
-    model = keras.Sequential([
-        keras.layers.Embedding(VOCAB_SIZE, EMBEDDING_DIM, input_length=MAX_SEQUENCE_LENGTH),
-        keras.layers.GlobalAveragePooling1D(),
-        keras.layers.Dropout(0.3),
-        keras.layers.Dense(32, activation='relu', kernel_regularizer=keras.regularizers.l2(0.01)),
-        keras.layers.Dropout(0.5),
-        keras.layers.Dense(16, activation='relu', kernel_regularizer=keras.regularizers.l2(0.01)),
-        keras.layers.Dropout(0.5),
-        keras.layers.Dense(3, activation='softmax')
-    ])
-    
-    optimizer = keras.optimizers.Adam(learning_rate=0.001)
-    
-    # Use focal loss for extreme class imbalance, otherwise use weighted cross-entropy
-    if use_focal_loss:
-        # Alpha weights: [Positive, Negative, Neutral] - higher for minority classes
-        alpha = tf.constant([0.05, 0.7, 0.25], dtype=tf.float32)  # Even lower for Positive, higher for Negative/Neutral
-        loss_fn = focal_loss(gamma=2.0, alpha=alpha)
-    else:
-        loss_fn = 'sparse_categorical_crossentropy'
-    
-    model.compile(
-        optimizer=optimizer,
-        loss=loss_fn,
-        metrics=['accuracy']
-    )
-    
-    return model
+    encodings = tokenizer(
+        test_samples,
+        truncation=True,
+        padding=True,
+        max_length=512,
+        return_tensors='pt'
+    ).to(device)
+
+    model.eval()
+    with torch.no_grad():
+        outputs = model(**encodings)
+        logits = outputs.logits
+        probabilities = torch.nn.functional.softmax(logits, dim=-1).cpu().numpy()
+        predicted_classes = np.argmax(probabilities, axis=-1)
+
+    print("\n=== Label Mapping Verification ===")
+    for text, pred, probs in zip(test_samples, predicted_classes, probabilities):
+        print(f"Text: {text[:50]}...")
+        print(f"Predicted class: {pred}, Probabilities: {probs}")
+
+    # Standard mapping: 0=Negative, 1=Neutral, 2=Positive
+    label_map = {'Positive': 2, 'Negative': 0, 'Neutral': 1}
+    reverse_map = {0: 'Negative', 1: 'Neutral', 2: 'Positive'}
+
+    print(f"\nUsing label mapping: {reverse_map}")
+    return label_map, reverse_map
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    
-    # SageMaker specific arguments
     parser.add_argument('--model-dir', type=str, default=os.environ.get('SM_MODEL_DIR'))
     parser.add_argument('--train', type=str, default=os.environ.get('SM_CHANNEL_TRAIN'))
-    parser.add_argument('--epochs', type=int, default=10)
-    parser.add_argument('--batch-size', type=int, default=32)
-    
-    args, _ = parser.parse_known_args()
-    
-    print("Starting training...")
+    parser.add_argument('--epochs', type=int, default=0)
+    parser.add_argument('--batch-size', type=int, default=16, dest='batch_size')
+    parser.add_argument('--learning-rate', type=float, default=2e-5, dest='learning_rate')
+
+    args = parser.parse_args()
+
+    print("=" * 80)
+    print("Loading Pre-trained Product Review Sentiment Analyzer")
+    print("=" * 80)
+    print(f"Model: {MODEL_NAME}")
     print(f"Model dir: {args.model_dir}")
-    print(f"Train data dir: {args.train}")
-    
-    # Load and preprocess data
-    X_train, X_test, y_train, y_test, tokenizer, class_weights = load_and_preprocess_data(args.train)
-    
-    # Build and train model
-    print("Building model with focal loss for class imbalance...")
-    model = build_model(use_focal_loss=True)
-    
-    # Create proper train/val split with stratification
-    from sklearn.model_selection import train_test_split
-    X_train_split, X_val, y_train_split, y_val = train_test_split(
-        X_train, y_train, test_size=0.2, random_state=42, stratify=y_train
-    )
-    
-    print(f"Training: {len(X_train_split)}, Validation: {len(X_val)}, Test: {len(X_test)}")
-    
-    # Callbacks for overfitting prevention
-    early_stopping = keras.callbacks.EarlyStopping(
-        monitor='val_loss',
-        patience=5,
-        restore_best_weights=True,
-        verbose=1
-    )
-    
-    reduce_lr = keras.callbacks.ReduceLROnPlateau(
-        monitor='val_loss',
-        factor=0.5,
-        patience=3,
-        min_lr=0.0001,
-        verbose=1
-    )
-    
-    print("Training model (dataset already balanced, no class weights needed)...")
-    history = model.fit(
-        X_train_split, y_train_split,
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        validation_data=(X_val, y_val),
-        # class_weight=class_weights,  # Removed - dataset already balanced
-        callbacks=[early_stopping, reduce_lr],
-        verbose=1
-    )
-    
-    # Get final validation accuracy
-    final_val_accuracy = None
-    if 'val_accuracy' in history.history and len(history.history['val_accuracy']) > 0:
-        final_val_accuracy = float(history.history['val_accuracy'][-1])
-        print(f"Final validation accuracy: {final_val_accuracy:.4f}")
-    
-    # Evaluate model on test set
-    print("Evaluating model on test set...")
-    test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=0)
-    
-    print(f"Test accuracy: {test_accuracy:.4f}")
-    print(f"Test loss: {test_loss:.4f}")
-    
-    # Generate confusion matrix
-    y_pred = model.predict(X_test, verbose=0)
-    y_pred_classes = np.argmax(y_pred, axis=1)
-    cm = confusion_matrix(y_test, y_pred_classes)
-    
-    print("\nConfusion Matrix:")
-    print(cm)
-    print(f"\nValidation Accuracy: {final_val_accuracy:.4f}")
-    print(f"Test Accuracy: {test_accuracy:.4f}")
-    
-    # Save model in TensorFlow SavedModel format
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
+
+    # Load tokenizer and model from HuggingFace
+    print(f"\nDownloading model from HuggingFace: {MODEL_NAME}")
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
+    model.to(device)
+
+    print("Model loaded successfully!")
+
+    # Verify label mapping
+    label_map, reverse_map = verify_label_mapping(model, tokenizer, device)
+
+    # Save model and tokenizer
+    print(f"\n{'=' * 80}")
     print(f"Saving model to {args.model_dir}")
-    model_path = os.path.join(args.model_dir, '1')  # Version 1
-    model.save(model_path, save_format='tf')
-    
-    # Save tokenizer as pickle (for SageMaker)
-    tokenizer_path = os.path.join(args.model_dir, 'tokenizer.pkl')
-    with open(tokenizer_path, 'wb') as f:
-        pickle.dump(tokenizer, f)
-    
-    # Also save tokenizer as JSON for inference service (version-independent)
-    try:
-        import boto3
-        s3_client = boto3.client('s3')
-        models_bucket = os.environ.get('MODELS_BUCKET') or os.environ.get('S3_MODELS_BUCKET')
-        if models_bucket:
-            # Save as JSON (version-independent)
-            tokenizer_json = {
-                'word_index': tokenizer.word_index,
-                'num_words': tokenizer.num_words,
-                'oov_token': tokenizer.oov_token,
-                'document_count': tokenizer.document_count
-            }
-            import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp_file:
-                json.dump(tokenizer_json, tmp_file)
-                tmp_file_path = tmp_file.name
-            
-            s3_key = 'tokenizers/latest_tokenizer.json'
-            s3_client.upload_file(tmp_file_path, models_bucket, s3_key)
-            os.unlink(tmp_file_path)
-            print(f"Tokenizer JSON saved to s3://{models_bucket}/{s3_key}")
-            
-            # Also save pickle for backward compatibility
-            s3_key_pkl = 'tokenizers/latest_tokenizer.pkl'
-            s3_client.upload_file(tokenizer_path, models_bucket, s3_key_pkl)
-            print(f"Tokenizer pickle saved to s3://{models_bucket}/{s3_key_pkl}")
-    except Exception as e:
-        print(f"Warning: Could not save tokenizer to S3: {e}")
-    
-    # Save metrics
-    metrics = {
-        'accuracy': float(test_accuracy),
-        'loss': float(test_loss),
-        'validation_accuracy': float(final_val_accuracy) if final_val_accuracy is not None else None,
-        'training_samples': len(X_train_split),
-        'validation_samples': len(X_val),
-        'test_samples': len(X_test),
-        'confusion_matrix': cm.tolist()
-    }
-    
-    metrics_path = os.path.join(args.model_dir, 'metrics.json')
-    with open(metrics_path, 'w') as f:
-        json.dump(metrics, f)
-    
-    print("Training complete!")
+    print(f"{'=' * 80}")
+
+    # Save using HuggingFace format
+    model.save_pretrained(args.model_dir)
+    tokenizer.save_pretrained(args.model_dir)
+    print("Model and tokenizer saved!")
+
+    # Save label mappings
+    reverse_map_str = {str(k): v for k, v in reverse_map.items()}
+
+    with open(os.path.join(args.model_dir, 'label_map.json'), 'w') as f:
+        json.dump(label_map, f)
+
+    with open(os.path.join(args.model_dir, 'reverse_label_map.json'), 'w') as f:
+        json.dump(reverse_map_str, f)
+
+    print("Label mappings saved!")
+    print("\n" + "=" * 80)
+    print("Pre-trained model download and setup complete!")
+    print("=" * 80)
