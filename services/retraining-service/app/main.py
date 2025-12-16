@@ -3,8 +3,7 @@ import json
 import httpx
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.preprocessing.sequence import pad_sequences
+from transformers import AutoTokenizer, TFAutoModelForSequenceClassification
 import pickle
 import pandas as pd
 from pathlib import Path
@@ -32,12 +31,13 @@ AWS_REGION = os.getenv("AWS_REGION", "us-east-2")
 # Initialize S3 client
 s3_client = boto3.client('s3', region_name=AWS_REGION) if S3_BUCKET else None
 
-MAX_SEQUENCE_LENGTH = 200
-VOCAB_SIZE = 10000
-EMBEDDING_DIM = 128
+# Pre-trained model configuration
+MODEL_NAME = "eakashyap/product-review-sentiment-analyzer"
 
-label_map = {'Positive': 0, 'Negative': 1, 'Neutral': 2}
-reverse_label_map = {0: 'Positive', 1: 'Negative', 2: 'Neutral'}
+# Label mapping (matching the pre-trained model)
+# Pre-trained model uses: 0=Negative, 1=Neutral, 2=Positive
+label_map = {'Positive': 2, 'Negative': 0, 'Neutral': 1}
+reverse_label_map = {0: 'Negative', 1: 'Neutral', 2: 'Positive'}
 
 
 @app.get("/health")
@@ -100,35 +100,26 @@ def load_feedback():
     return []
 
 
-def load_existing_tokenizer():
-    tokenizer_files = sorted(TOKENIZER_DIR.glob("tokenizer_*.pkl"), reverse=True)
-    if tokenizer_files:
-        with open(tokenizer_files[0], 'rb') as f:
-            return pickle.load(f)
-    return None
+def load_pretrained_model_and_tokenizer():
+    """Load pre-trained model and tokenizer from HuggingFace"""
+    log_info("retraining", f"Loading pre-trained model: {MODEL_NAME}")
 
+    try:
+        # Load tokenizer
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
-def build_model():
-    """Build model with overfitting prevention"""
-    model = keras.Sequential([
-        keras.layers.Embedding(VOCAB_SIZE, EMBEDDING_DIM, input_length=MAX_SEQUENCE_LENGTH),
-        keras.layers.GlobalAveragePooling1D(),
-        keras.layers.Dropout(0.3),
-        keras.layers.Dense(32, activation='relu', kernel_regularizer=keras.regularizers.l2(0.01)),
-        keras.layers.Dropout(0.5),
-        keras.layers.Dense(16, activation='relu', kernel_regularizer=keras.regularizers.l2(0.01)),
-        keras.layers.Dropout(0.5),
-        keras.layers.Dense(3, activation='softmax')
-    ])
-    
-    optimizer = keras.optimizers.Adam(learning_rate=0.001)
-    model.compile(
-        optimizer=optimizer,
-        loss='sparse_categorical_crossentropy',
-        metrics=['accuracy']
-    )
-    
-    return model
+        # Load model (convert from PyTorch to TensorFlow)
+        model = TFAutoModelForSequenceClassification.from_pretrained(
+            MODEL_NAME,
+            from_pt=True,
+            num_labels=3
+        )
+
+        log_info("retraining", "Pre-trained model and tokenizer loaded successfully")
+        return model, tokenizer
+    except Exception as e:
+        log_info("retraining", f"Error loading pre-trained model: {e}")
+        raise
 
 
 @app.post("/retrain")
@@ -148,22 +139,28 @@ async def retrain(request: Request):
         return {"error": "Insufficient feedback data. Need at least 10 samples."}
     
     log_info(request_id, f"Preparing training data from {len(feedback_list)} feedback samples")
-    
+
     texts = [item['text'] for item in feedback_list]
     labels = [item['user_label'] for item in feedback_list]
-    
-    labels_numeric = [label_map.get(label, 2) for label in labels]
-    
-    existing_tokenizer = load_existing_tokenizer()
-    if existing_tokenizer:
-        tokenizer = existing_tokenizer
-    else:
-        tokenizer = Tokenizer(num_words=VOCAB_SIZE, oov_token="<OOV>")
-        tokenizer.fit_on_texts(texts)
-    
-    sequences = tokenizer.texts_to_sequences(texts)
-    X = pad_sequences(sequences, maxlen=MAX_SEQUENCE_LENGTH)
-    y = np.array(labels_numeric)
+
+    labels_numeric = [label_map.get(label, 1) for label in labels]  # Default to Neutral (1)
+
+    # Load pre-trained model and tokenizer
+    model, tokenizer = load_pretrained_model_and_tokenizer()
+
+    # Tokenize texts using HuggingFace tokenizer
+    encodings = tokenizer(
+        texts,
+        truncation=True,
+        padding='max_length',
+        max_length=512,
+        return_tensors=None  # Return as lists
+    )
+
+    # Convert to numpy arrays
+    input_ids = np.array(encodings['input_ids'], dtype=np.int32)
+    attention_mask = np.array(encodings['attention_mask'], dtype=np.int32)
+    y = np.array(labels_numeric, dtype=np.int32)
     
     # Calculate class weights for imbalanced data (stronger weights for extreme imbalance)
     from collections import Counter
@@ -186,49 +183,89 @@ async def retrain(request: Request):
     log_info(request_id, f"Class weights (normalized): {class_weights}")
     
     # Proper train/val/test split
-    if len(X) < 20:
+    indices = np.arange(len(input_ids))
+
+    if len(indices) < 20:
         # Very small dataset - use simple split
-        split_idx = int(len(X) * 0.8)
+        split_idx = int(len(indices) * 0.8)
         if split_idx == 0:
-            split_idx = len(X) - 1
-        X_train, X_test = X[:split_idx], X[split_idx:]
-        y_train, y_test = y[:split_idx], y[split_idx:]
-        X_val, y_val = X_test, y_test
+            split_idx = len(indices) - 1
+        train_idx = indices[:split_idx]
+        test_idx = indices[split_idx:]
+        val_idx = test_idx
     else:
         # Proper stratified split
-        X_train, X_temp, y_train, y_temp = train_test_split(
-            X, y, test_size=0.3, random_state=42, stratify=y
+        train_idx, temp_idx = train_test_split(
+            indices, test_size=0.3, random_state=42, stratify=y
         )
-        X_val, X_test, y_val, y_test = train_test_split(
-            X_temp, y_temp, test_size=0.5, random_state=42, stratify=y_temp
+        val_idx, test_idx = train_test_split(
+            temp_idx, test_size=0.5, random_state=42,
+            stratify=y[temp_idx]
         )
+
+    # Create train/val/test datasets
+    train_input_ids = input_ids[train_idx]
+    train_attention_mask = attention_mask[train_idx]
+    train_labels = y[train_idx]
+
+    val_input_ids = input_ids[val_idx]
+    val_attention_mask = attention_mask[val_idx]
+    val_labels = y[val_idx]
+
+    test_input_ids = input_ids[test_idx]
+    test_attention_mask = attention_mask[test_idx]
+    test_labels = y[test_idx]
+
+    log_info(request_id, f"Training: {len(train_idx)}, Validation: {len(val_idx)}, Test: {len(test_idx)}")
+
+    # Create TensorFlow datasets
+    batch_size = min(8, len(train_idx))  # Smaller batch size for fine-tuning
+
+    train_dataset = tf.data.Dataset.from_tensor_slices((
+        {'input_ids': train_input_ids, 'attention_mask': train_attention_mask},
+        train_labels
+    )).batch(batch_size)
+
+    val_dataset = tf.data.Dataset.from_tensor_slices((
+        {'input_ids': val_input_ids, 'attention_mask': val_attention_mask},
+        val_labels
+    )).batch(batch_size)
+
+    test_dataset = tf.data.Dataset.from_tensor_slices((
+        {'input_ids': test_input_ids, 'attention_mask': test_attention_mask},
+        test_labels
+    )).batch(batch_size)
     
-    log_info(request_id, f"Training: {len(X_train)}, Validation: {len(X_val)}, Test: {len(X_test)}")
-    
-    model = build_model()
-    
+    # Compile model for fine-tuning
+    optimizer = tf.keras.optimizers.Adam(learning_rate=2e-5)  # Lower LR for fine-tuning
+    loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+    metrics = [tf.keras.metrics.SparseCategoricalAccuracy(name='accuracy')]
+
+    model.compile(optimizer=optimizer, loss=loss, metrics=metrics)
+    log_info(request_id, "Model compiled for fine-tuning")
+
     # Callbacks for overfitting prevention
     early_stopping = keras.callbacks.EarlyStopping(
         monitor='val_loss',
-        patience=5,
+        patience=3,
         restore_best_weights=True,
         verbose=1
     )
-    
+
     reduce_lr = keras.callbacks.ReduceLROnPlateau(
         monitor='val_loss',
         factor=0.5,
-        patience=3,
-        min_lr=0.0001,
+        patience=2,
+        min_lr=1e-6,
         verbose=1
     )
-    
+
+    # Fine-tune the model
+    log_info(request_id, "Starting fine-tuning...")
     history = model.fit(
-        X_train, y_train,
-        epochs=10,
-        batch_size=min(32, len(X_train)),
-        validation_data=(X_val, y_val),
-        class_weight=class_weights,
+        train_dataset,
+        epochs=5,  # Fewer epochs for fine-tuning
+        validation_data=val_dataset,
         callbacks=[early_stopping, reduce_lr],
         verbose=1
     )
@@ -240,16 +277,26 @@ async def retrain(request: Request):
         log_info(request_id, f"Validation accuracy: {val_accuracy:.4f}")
     
     # Evaluate on test set
-    test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=0) if len(X_test) > 0 else (0.0, 0.0)
-    if len(X_test) == 0:
-        test_accuracy = float(history.history['accuracy'][-1])
-        cm = None
-    else:
+    if len(test_idx) > 0:
+        test_results = model.evaluate(test_dataset, verbose=0)
+        test_loss = test_results[0]
+        test_accuracy = test_results[1]
+
         # Generate confusion matrix on test set
-        y_pred = model.predict(X_test, verbose=0)
-        y_pred_classes = np.argmax(y_pred, axis=1)
-        cm = confusion_matrix(y_test, y_pred_classes).tolist()
+        test_predictions = model.predict(test_dataset, verbose=0)
+        # Handle HuggingFace model output format
+        if hasattr(test_predictions, 'logits'):
+            logits = test_predictions.logits
+        else:
+            logits = test_predictions
+
+        y_pred_classes = np.argmax(logits, axis=1)
+        cm = confusion_matrix(test_labels, y_pred_classes).tolist()
         log_info(request_id, f"Confusion matrix: {cm}")
+    else:
+        test_accuracy = float(history.history['accuracy'][-1])
+        test_loss = 0.0
+        cm = None
     
     version = f"v{datetime.now().strftime('%Y%m%d%H%M%S')}"
     
@@ -257,15 +304,26 @@ async def retrain(request: Request):
     
     MODELS_DIR.mkdir(exist_ok=True, parents=True)
     TOKENIZER_DIR.mkdir(exist_ok=True, parents=True)
-    
-    model_path = MODELS_DIR / f"model_{version}.keras"
-    model.save(str(model_path))
-    
+
+    # Save model in TensorFlow SavedModel format (compatible with HuggingFace)
+    model_path = MODELS_DIR / f"model_{version}"
+    model.save_pretrained(str(model_path))
+    log_info(request_id, f"Model saved to {model_path}")
+
+    # Save tokenizer
     tokenizer_path = TOKENIZER_DIR / f"tokenizer_{version}.pkl"
     with open(tokenizer_path, 'wb') as f:
         pickle.dump(tokenizer, f)
-    
-    model_registry_path = f"/models/model_{version}.keras"
+    log_info(request_id, f"Tokenizer saved to {tokenizer_path}")
+
+    # Save reverse label mapping
+    label_map_path = MODELS_DIR / f"reverse_label_map_{version}.json"
+    with open(label_map_path, 'w') as f:
+        reverse_map_str = {str(k): v for k, v in reverse_label_map.items()}
+        json.dump(reverse_map_str, f)
+    log_info(request_id, f"Label mapping saved to {label_map_path}")
+
+    model_registry_path = f"/models/model_{version}"
     
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -306,7 +364,7 @@ async def retrain(request: Request):
     
     if cm is not None:
         result["confusion_matrix"] = cm
-        result["confusion_matrix_labels"] = ["Positive", "Negative", "Neutral"]
+        result["confusion_matrix_labels"] = ["Negative", "Neutral", "Positive"]  # Matches label mapping: 0=Neg, 1=Neu, 2=Pos
     
     return result
 

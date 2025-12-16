@@ -1,0 +1,8 @@
+pandas
+numpy
+tensorflow>=2.13.0
+transformers>=4.30.0
+scikit-learn
+sentencepiece
+boto3
+torch

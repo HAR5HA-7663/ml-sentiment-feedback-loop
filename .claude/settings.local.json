@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(aws sts get-caller-identity:*)",
+      "Bash(aws s3 ls:*)",
+      "Bash(aws elbv2 describe-load-balancers:*)",
+      "Bash(curl:*)",
+      "Bash(aws sagemaker list-endpoints:*)",
+      "Bash(aws sagemaker list-training-jobs:*)",
+      "Bash(aws sagemaker describe-training-job:*)",
+      "Bash(aws sagemaker stop-training-job:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
