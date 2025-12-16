@@ -1,5 +1,6 @@
 .env
 .cursorrules
+.claude/
 __pycache__/
 *.pyc
 *.pyo
