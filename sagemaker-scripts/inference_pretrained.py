@@ -1,47 +1,48 @@
 """
 SageMaker Inference Script for Pre-trained Product Review Sentiment Analyzer
-Loads the TensorFlow model and performs sentiment predictions
-Model: eakashyap/product-review-sentiment-analyzer (DistilBERT fine-tuned on Yelp reviews)
+Uses PyTorch and HuggingFace transformers
 """
 import json
 import os
+import torch
 import numpy as np
-import tensorflow as tf
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-# Global variables
 model = None
 tokenizer = None
 reverse_label_map = None
+device = None
 
 
 def model_fn(model_dir):
     """Load model for inference"""
-    global model, tokenizer, reverse_label_map
+    global model, tokenizer, reverse_label_map, device
 
     print(f"Loading model from {model_dir}")
 
-    # Load TensorFlow model
-    model_path = os.path.join(model_dir, '1')
-    model = tf.keras.models.load_model(model_path)
-    print(f"Model loaded from {model_path}")
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
 
-    # Load tokenizer from pickle
-    import pickle
-    tokenizer_path = os.path.join(model_dir, 'tokenizer.pkl')
-    with open(tokenizer_path, 'rb') as f:
-        tokenizer = pickle.load(f)
-    print(f"Tokenizer loaded from {tokenizer_path}")
+    # Load model and tokenizer
+    model = AutoModelForSequenceClassification.from_pretrained(model_dir)
+    model.to(device)
+    model.eval()
+    print("Model loaded!")
+
+    tokenizer = AutoTokenizer.from_pretrained(model_dir)
+    print("Tokenizer loaded!")
 
     # Load reverse label mapping
     reverse_map_path = os.path.join(model_dir, 'reverse_label_map.json')
-    with open(reverse_map_path, 'r') as f:
-        reverse_label_map = json.load(f)
-        # Convert string keys back to integers
-        reverse_label_map = {int(k): v for k, v in reverse_label_map.items()}
-    print(f"Label mapping loaded: {reverse_label_map}")
+    if os.path.exists(reverse_map_path):
+        with open(reverse_map_path, 'r') as f:
+            reverse_label_map = json.load(f)
+            reverse_label_map = {int(k): v for k, v in reverse_label_map.items()}
+    else:
+        # Default mapping
+        reverse_label_map = {0: 'Negative', 1: 'Neutral', 2: 'Positive'}
 
-    print("Model, tokenizer, and label mapping loaded successfully!")
+    print(f"Label mapping: {reverse_label_map}")
     return model
 
 
@@ -50,7 +51,6 @@ def input_fn(request_body, request_content_type):
     if request_content_type == 'application/json':
         data = json.loads(request_body)
 
-        # Handle different input formats
         if 'instances' in data:
             texts = [item['text'] if isinstance(item, dict) else item for item in data['instances']]
         elif 'text' in data:
@@ -65,7 +65,7 @@ def input_fn(request_body, request_content_type):
 
 def predict_fn(input_data, model):
     """Make predictions"""
-    global tokenizer, reverse_label_map
+    global tokenizer, reverse_label_map, device
 
     # Tokenize
     encodings = tokenizer(
@@ -73,22 +73,21 @@ def predict_fn(input_data, model):
         truncation=True,
         padding=True,
         max_length=512,
-        return_tensors='tf'
-    )
+        return_tensors='pt'
+    ).to(device)
 
     # Predict
-    predictions = model(encodings, training=False)
-    logits = predictions['logits'] if isinstance(predictions, dict) else predictions
-    probabilities = tf.nn.softmax(logits, axis=-1).numpy()
+    model.eval()
+    with torch.no_grad():
+        outputs = model(**encodings)
+        logits = outputs.logits
+        probabilities = torch.nn.functional.softmax(logits, dim=-1).cpu().numpy()
 
     # Parse results
     results = []
-
     for pred in probabilities:
         predicted_class = int(np.argmax(pred))
         confidence = float(pred[predicted_class])
-
-        # Map class to label using reverse mapping
         label = reverse_label_map.get(predicted_class, 'neutral').lower()
 
         results.append({

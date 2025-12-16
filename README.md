@@ -463,7 +463,8 @@ Push to main
 **Backend:**
 - Python 3.11
 - FastAPI (microservices framework)
-- TensorFlow 2.11 (ML framework)
+- PyTorch + HuggingFace Transformers (ML framework)
+- Pre-trained model: `cardiffnlp/twitter-roberta-base-sentiment-latest`
 - boto3 (AWS SDK)
 
 **Infrastructure:**
@@ -668,8 +669,7 @@ https://github.com/{your-username}/ml-sentiment-feedback-loop
 ### Documentation
 
 - **Swagger UI:** `{ALB_URL}/docs`
-- **Training Guide:** `aws-slop/scripts/TRAINING_CLI_GUIDE.md`
-- **Swagger Guide:** `aws-slop/docs/QUICK_SWAGGER_GUIDE.md`
+- **SageMaker Guide:** `aws-slop/docs/SAGEMAKER_GUIDE.md`
 
 ---
 
@@ -731,8 +731,4 @@ curl -X POST http://{ALB_URL}/predict \
 
 ## License
 
-[Specify your license here]
-
-## Contributors
-
-[Add contributors if applicable]
+MIT License
