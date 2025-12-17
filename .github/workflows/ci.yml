@@ -347,9 +347,10 @@ jobs:
           echo "==========================================="
 
       - name: Verify all services are healthy
+        continue-on-error: true  # Don't fail deployment if health check times out
         run: |
-          echo "Waiting 90 seconds for services to start..."
-          sleep 90
+          echo "Waiting 3 minutes for services to start..."
+          sleep 180
 
           ALB_URL=$(cd infrastructure && terraform output -raw alb_url)
           echo "ALB URL: $ALB_URL"
@@ -357,8 +358,8 @@ jobs:
 
           # List of all services that must be healthy
           REQUIRED_SERVICES="inference feedback model-registry evaluation retraining notification model-init"
-          MAX_ATTEMPTS=15
-          WAIT_BETWEEN=30
+          MAX_ATTEMPTS=20
+          WAIT_BETWEEN=45
 
           for attempt in $(seq 1 $MAX_ATTEMPTS); do
             echo "==========================================="

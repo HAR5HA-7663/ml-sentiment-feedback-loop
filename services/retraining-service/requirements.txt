@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 httpx
 tensorflow>=2.13.0
+tf-keras
 transformers>=4.30.0
 torch
 sentencepiece
