@@ -151,14 +151,44 @@ async def evaluate(request: Request):
 @app.post("/retrain")
 async def retrain(request: Request):
     request_id = get_or_generate_request_id(request)
-    
+
     result = forward_request(
         SERVICE_URLS["retraining"],
         "/retrain",
         "POST",
         request_id
     )
-    
+
+    return result
+
+
+@app.get("/training-jobs")
+async def list_training_jobs(request: Request):
+    """List recent SageMaker training jobs"""
+    request_id = get_or_generate_request_id(request)
+
+    result = forward_request(
+        SERVICE_URLS["retraining"],
+        "/training-jobs",
+        "GET",
+        request_id
+    )
+
+    return result
+
+
+@app.get("/training-jobs/{job_name}")
+async def get_training_job(request: Request, job_name: str):
+    """Get details of a specific training job"""
+    request_id = get_or_generate_request_id(request)
+
+    result = forward_request(
+        SERVICE_URLS["retraining"],
+        f"/training-jobs/{job_name}",
+        "GET",
+        request_id
+    )
+
     return result
 
 
@@ -242,7 +272,9 @@ async def root():
             "POST /predict": "Make sentiment prediction",
             "POST /feedback": "Submit user feedback",
             "POST /evaluate": "Run model evaluation",
-            "POST /retrain": "Trigger model retraining",
+            "POST /retrain": "Trigger model retraining via SageMaker",
+            "GET /training-jobs": "List recent training jobs",
+            "GET /training-jobs/{job_name}": "Get training job details",
             "GET /models": "List all models",
             "GET /health": "Check system health",
             "POST /model-init/bootstrap": "Start SageMaker training",
