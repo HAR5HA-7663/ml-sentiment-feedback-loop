@@ -118,8 +118,8 @@ def create_sagemaker_training_job(job_name, training_data_uri):
         },
         'HyperParameters': {
             'epochs': '3',
-            'batch_size': '16',
-            'learning_rate': '2e-5',
+            'batch-size': '16',
+            'learning-rate': '2e-5',
             'sagemaker_program': 'train.py',
             'sagemaker_submit_directory': code_path,
         },
