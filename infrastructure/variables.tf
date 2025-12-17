@@ -51,9 +51,9 @@ variable "ecs_task_cpu" {
 }
 
 variable "ecs_task_memory" {
-  description = "Memory for ECS tasks (512 MB)"
+  description = "Memory for ECS tasks (1024 MB)"
   type        = string
-  default     = "512"
+  default     = "1024"
 }
 
 variable "enable_auto_shutdown" {

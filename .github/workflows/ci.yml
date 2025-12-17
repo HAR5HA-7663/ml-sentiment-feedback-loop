@@ -346,22 +346,74 @@ jobs:
           echo ""
           echo "==========================================="
 
-      - name: Test health endpoints
+      - name: Verify all services are healthy
         run: |
-          echo "Waiting 60 seconds for services to start..."
-          sleep 60
+          echo "Waiting 90 seconds for services to start..."
+          sleep 90
 
-          echo "Testing ALB health endpoint..."
           ALB_URL=$(cd infrastructure && terraform output -raw alb_url)
+          echo "ALB URL: $ALB_URL"
+          echo ""
 
-          for i in {1..10}; do
-            if curl -f "$ALB_URL/health" 2>/dev/null; then
-              echo "✓ Health check passed!"
+          # List of all services that must be healthy
+          REQUIRED_SERVICES="inference feedback model-registry evaluation retraining notification model-init"
+          MAX_ATTEMPTS=15
+          WAIT_BETWEEN=30
+
+          for attempt in $(seq 1 $MAX_ATTEMPTS); do
+            echo "==========================================="
+            echo "Health check attempt $attempt/$MAX_ATTEMPTS"
+            echo "==========================================="
+
+            # Get health status
+            HEALTH_RESPONSE=$(curl -s "$ALB_URL/health" 2>/dev/null || echo '{"overall":"error"}')
+            echo "Response: $HEALTH_RESPONSE"
+
+            # Check if overall is healthy
+            OVERALL=$(echo "$HEALTH_RESPONSE" | jq -r '.overall // "error"')
+
+            if [ "$OVERALL" = "healthy" ]; then
+              echo ""
+              echo "==========================================="
+              echo "✅ ALL SERVICES HEALTHY!"
+              echo "==========================================="
+
+              # Print individual service status
+              echo ""
+              echo "Service Status:"
+              for svc in $REQUIRED_SERVICES; do
+                STATUS=$(echo "$HEALTH_RESPONSE" | jq -r ".services.\"$svc\".status // .services.$svc // \"unknown\"")
+                echo "  ✓ $svc: $STATUS"
+              done
+              echo ""
               exit 0
             fi
-            echo "Attempt $i failed, retrying in 30 seconds..."
-            sleep 30
+
+            # Show which services are not healthy
+            echo ""
+            echo "Services not yet healthy:"
+            for svc in $REQUIRED_SERVICES; do
+              STATUS=$(echo "$HEALTH_RESPONSE" | jq -r ".services.\"$svc\".status // .services.$svc // \"unknown\"")
+              if [ "$STATUS" != "ok" ]; then
+                echo "  ✗ $svc: $STATUS"
+              fi
+            done
+
+            if [ $attempt -lt $MAX_ATTEMPTS ]; then
+              echo ""
+              echo "Waiting ${WAIT_BETWEEN}s before next attempt..."
+              sleep $WAIT_BETWEEN
+            fi
           done
 
-          echo "⚠ Services are starting (this may take a few minutes)"
-          echo "⚠ Check ECS console for service status"
+          echo ""
+          echo "==========================================="
+          echo "❌ DEPLOYMENT VERIFICATION FAILED"
+          echo "==========================================="
+          echo "Services did not become healthy within $(($MAX_ATTEMPTS * $WAIT_BETWEEN / 60)) minutes"
+          echo ""
+          echo "Debug commands:"
+          echo "  aws ecs describe-services --cluster ml-sentiment-cluster --services ml-sentiment-retraining-service"
+          echo "  aws logs tail /ecs/ml-sentiment/retraining-service --follow"
+          echo ""
+          exit 1
