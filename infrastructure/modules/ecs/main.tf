@@ -247,6 +247,16 @@ resource "aws_ecs_service" "services" {
   deployment_maximum_percent         = 200
   deployment_minimum_healthy_percent = 50
 
+  # Give containers time to start before health checks begin
+  # This prevents tasks from being killed during startup
+  health_check_grace_period_seconds = 120
+
+  # Enable circuit breaker to auto-rollback failed deployments
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
   # Wait for ALB to be ready (only if exposed)
   depends_on = [var.alb_target_group_arns]
 
