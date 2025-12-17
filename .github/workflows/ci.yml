@@ -382,7 +382,7 @@ jobs:
               echo ""
               echo "Service Status:"
               for svc in $REQUIRED_SERVICES; do
-                STATUS=$(echo "$HEALTH_RESPONSE" | jq -r ".services.\"$svc\".status // .services.$svc // \"unknown\"")
+                STATUS=$(echo "$HEALTH_RESPONSE" | jq -r ".services[\"$svc\"].status // .services[\"$svc\"] // \"unknown\"")
                 echo "  ✓ $svc: $STATUS"
               done
               echo ""
@@ -393,7 +393,7 @@ jobs:
             echo ""
             echo "Services not yet healthy:"
             for svc in $REQUIRED_SERVICES; do
-              STATUS=$(echo "$HEALTH_RESPONSE" | jq -r ".services.\"$svc\".status // .services.$svc // \"unknown\"")
+              STATUS=$(echo "$HEALTH_RESPONSE" | jq -r ".services[\"$svc\"].status // .services[\"$svc\"] // \"unknown\"")
               if [ "$STATUS" != "ok" ]; then
                 echo "  ✗ $svc: $STATUS"
               fi
