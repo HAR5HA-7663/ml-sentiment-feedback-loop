@@ -180,7 +180,15 @@ All resources will be cleanly removed from your AWS account.
 
 ## CI/CD Pipeline
 
-Push to `main` branch triggers automatic deployment:
+> **Note:** CI/CD is currently **disabled**. The workflow file has been renamed to `ci.yml.disabled` to prevent automatic deployments. AWS infrastructure has been cleaned up.
+
+To re-enable CI/CD:
+```bash
+# Rename the workflow file back
+mv .github/workflows/ci.yml.disabled .github/workflows/ci.yml
+```
+
+When enabled, pushing to `main` branch triggers automatic deployment:
 
 ```
 git push origin main
