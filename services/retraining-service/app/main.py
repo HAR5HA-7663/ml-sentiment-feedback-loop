@@ -31,8 +31,8 @@ AWS_REGION = os.getenv("AWS_REGION", "us-east-2")
 # Initialize S3 client
 s3_client = boto3.client('s3', region_name=AWS_REGION) if S3_BUCKET else None
 
-# Pre-trained model configuration
-MODEL_NAME = "eakashyap/product-review-sentiment-analyzer"
+# Pre-trained model configuration (must match inference-service)
+MODEL_NAME = "cardiffnlp/twitter-roberta-base-sentiment-latest"
 
 # Label mapping (matching the pre-trained model)
 # Pre-trained model uses: 0=Negative, 1=Neutral, 2=Positive
